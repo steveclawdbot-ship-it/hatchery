@@ -1,4 +1,5 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
+import { execSync } from 'child_process';
 import { resolve } from 'path';
 import chalk from 'chalk';
 
@@ -29,7 +30,7 @@ export async function doctorCommand() {
       name: 'npm available',
       test: () => {
         try {
-          require('child_process').execSync('npm --version', { stdio: 'pipe' });
+          execSync('npm --version', { stdio: 'pipe' });
           return true;
         } catch {
           return false;
@@ -66,7 +67,7 @@ export async function doctorCommand() {
         name: 'agents.json valid',
         test: () => {
           try {
-            const content = require('fs').readFileSync(resolve('.', 'config', 'agents.json'), 'utf-8');
+            const content = readFileSync(resolve('.', 'config', 'agents.json'), 'utf-8');
             JSON.parse(content);
             return true;
           } catch {
@@ -79,7 +80,7 @@ export async function doctorCommand() {
         name: 'policies.json valid',
         test: () => {
           try {
-            const content = require('fs').readFileSync(resolve('.', 'config', 'policies.json'), 'utf-8');
+            const content = readFileSync(resolve('.', 'config', 'policies.json'), 'utf-8');
             JSON.parse(content);
             return true;
           } catch {
