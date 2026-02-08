@@ -1,0 +1,22 @@
+/**
+ * Worker: {{displayName}}
+ * Kind: {{kind}}
+ * {{description}}
+ */
+
+import type { Step, WorkerContext, StepResult } from '@hatchery/engine';
+
+export async function execute(step: Step, context: WorkerContext): Promise<StepResult> {
+  const { llm, db, logger } = context;
+
+  logger.info(`Executing {{kind}}: ${step.payload?.description ?? ''}`);
+
+  // TODO: Implement your worker logic here
+
+  return {
+    success: true,
+    output: {
+      message: '{{displayName}} completed',
+    },
+  };
+}

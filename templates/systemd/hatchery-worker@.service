@@ -1,0 +1,14 @@
+[Unit]
+Description=Hatchery Worker (%i)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node %h/scripts/worker.js %i
+WorkingDirectory=%h
+EnvironmentFile=%h/.env
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

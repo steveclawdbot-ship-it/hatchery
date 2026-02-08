@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  heartbeat:
+    build: .
+    command: node scripts/heartbeat.js
+    env_file: .env
+    restart: always
+
+  # Add worker services per step kind:
+  # worker-content:
+  #   build: .
+  #   command: node scripts/worker.js draft_content
+  #   env_file: .env
+  #   restart: on-failure

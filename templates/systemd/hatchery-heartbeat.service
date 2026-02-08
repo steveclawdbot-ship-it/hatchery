@@ -1,0 +1,14 @@
+[Unit]
+Description=Hatchery Heartbeat
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/node %h/scripts/heartbeat.js
+WorkingDirectory=%h
+EnvironmentFile=%h/.env
+Restart=always
+RestartSec=300
+
+[Install]
+WantedBy=multi-user.target

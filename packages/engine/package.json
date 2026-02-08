@@ -1,0 +1,20 @@
+{
+  "name": "@hatchery/engine",
+  "version": "0.1.0",
+  "description": "Hatchery runtime engine — heartbeat, workers, conversations, memory",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
