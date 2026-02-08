@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 
 interface Event {
   id: string;
@@ -13,43 +13,39 @@ interface Event {
 
 export default function SignalFeed() {
   const [events, setEvents] = useState<Event[]>([]);
-  const [connected, setConnected] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<'live' | 'delayed'>('live');
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load initial events
-    const loadInitial = async () => {
+    const POLL_MS = 5 * 60 * 1000;
+    let active = true;
+
+    const poll = async () => {
       try {
         const res = await fetch('/api/events/history');
         if (res.ok) {
           const data = await res.json();
-          setEvents(data);
-        }
-      } catch {
-        // Will populate from SSE
-      }
-    };
-    loadInitial();
-
-    // Connect to SSE stream
-    const eventSource = new EventSource('/api/events');
-
-    eventSource.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.type === 'connected') {
-          setConnected(true);
+          if (!active) return;
+          setEvents(Array.isArray(data) ? data : []);
+          setStatus('live');
+          setLastUpdated(new Date().toISOString());
           return;
         }
-        setEvents((prev) => [data, ...prev].slice(0, 500));
       } catch {
-        // Ignore parse errors
+        // ignored
       }
+      if (active) setStatus('delayed');
     };
 
-    eventSource.onerror = () => setConnected(false);
+    void poll();
+    const interval = setInterval(() => {
+      void poll();
+    }, POLL_MS);
 
-    return () => eventSource.close();
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   const getKindColor = (kind: string): string => {
@@ -70,20 +66,25 @@ export default function SignalFeed() {
         alignItems: 'center',
         marginBottom: 16,
       }}>
-        <h2 style={{ fontSize: 10, margin: 0 }}>Signal Feed</h2>
+        <h2 style={{ fontSize: 10, margin: 0 }}>Mission Feed</h2>
         <span style={{
           fontSize: 6,
           padding: '4px 8px',
-          backgroundColor: connected ? '#4CAF5033' : '#F4433633',
-          color: connected ? '#4CAF50' : '#F44336',
+          backgroundColor: status === 'live' ? '#4CAF5033' : '#F4433633',
+          color: status === 'live' ? '#4CAF50' : '#F44336',
           borderRadius: 4,
         }}>
-          {connected ? 'LIVE' : 'OFFLINE'}
+          {status === 'live' ? 'LIVE (POLL)' : 'DELAYED'}
         </span>
       </div>
 
+      <div style={{ fontSize: 6, color: '#7a7a92', marginBottom: 8 }}>
+        Updates every 5 minutes.
+        {' '}
+        {lastUpdated ? `Last sync: ${new Date(lastUpdated).toLocaleTimeString()}` : 'Waiting for first sync...'}
+      </div>
+
       <div
-        ref={containerRef}
         style={{
           maxHeight: 600,
           overflowY: 'auto',

@@ -1,73 +1,42 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { runHeartbeatCycle } from '@/lib/heartbeat-runner';
+import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 
 /**
  * Cron endpoint for Vercel deployment.
  * Triggers the heartbeat cycle.
  */
 export async function GET() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!url || !key) {
+  const db = createSupabaseAdminClient();
+  if (!db) {
     return NextResponse.json({ error: 'Missing Supabase config' }, { status: 500 });
   }
 
-  const db = createClient(url, key, { auth: { persistSession: false } });
-
-  // Record heartbeat start
-  const { data: run } = await db
-    .from('ops_action_runs')
-    .insert({ action: 'heartbeat' })
-    .select('id')
+  const { data: controlRow, error: controlError } = await db
+    .from('ops_policies')
+    .select('value')
+    .eq('key', 'runtime_control')
     .single();
 
-  try {
-    // Minimal heartbeat: recover stuck steps + check schedule
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: stuck } = await db
-      .from('ops_steps')
-      .select('id')
-      .eq('status', 'running')
-      .lt('reserved_at', thirtyMinAgo);
+  if (controlError && controlError.code !== 'PGRST116') {
+    return NextResponse.json({ error: controlError.message }, { status: 500 });
+  }
 
-    if (stuck?.length) {
-      await db
-        .from('ops_steps')
-        .update({ status: 'queued', reserved_by: null, reserved_at: null })
-        .in('id', stuck.map((s) => s.id));
-    }
-
-    // Emit heartbeat event
-    await db.from('ops_events').insert({
-      agent_id: 'system',
-      kind: 'system.heartbeat',
-      title: 'Heartbeat',
-      payload: { stepsRecovered: stuck?.length ?? 0 },
-      visibility: 'internal',
+  const mode = (controlRow?.value?.mode as string | undefined) ?? 'running';
+  if (mode !== 'running') {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      mode,
+      message: `Heartbeat skipped because runtime is ${mode}.`,
     });
+  }
 
-    // Complete run
-    await db
-      .from('ops_action_runs')
-      .update({
-        status: 'succeeded',
-        completed_at: new Date().toISOString(),
-        details: { stepsRecovered: stuck?.length ?? 0 },
-      })
-      .eq('id', run?.id);
-
-    return NextResponse.json({ ok: true, stepsRecovered: stuck?.length ?? 0 });
+  try {
+    const result = await runHeartbeatCycle(db);
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
-    await db
-      .from('ops_action_runs')
-      .update({
-        status: 'failed',
-        completed_at: new Date().toISOString(),
-        details: { error: (err as Error).message },
-      })
-      .eq('id', run?.id);
-
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

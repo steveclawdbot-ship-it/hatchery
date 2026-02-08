@@ -1,23 +1,20 @@
 'use client';
 
 import { useState } from 'react';
-import PixelOffice from '@/components/office/pixel-office';
 import SignalFeed from '@/components/dashboard/signal-feed';
-import MissionList from '@/components/dashboard/mission-list';
-import RelationshipGraph from '@/components/dashboard/relationship-graph';
-import MemoryBrowser from '@/components/dashboard/memory-browser';
+import ControlPanel from '@/components/dashboard/control-panel';
 
-type Tab = 'office' | 'feed' | 'missions' | 'relationships' | 'memories';
+type Tab = 'control' | 'feed' | 'office' | 'graph' | 'memory';
 
 export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>('office');
+  const [activeTab, setActiveTab] = useState<Tab>('control');
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'office', label: 'Office' },
-    { id: 'feed', label: 'Feed' },
-    { id: 'missions', label: 'Missions' },
-    { id: 'relationships', label: 'Graph' },
-    { id: 'memories', label: 'Memory' },
+  const tabs: Array<{ id: Tab; label: string; enabled: boolean }> = [
+    { id: 'control', label: 'Control Panel', enabled: true },
+    { id: 'feed', label: 'Mission Feed', enabled: true },
+    { id: 'office', label: 'Pixel Office', enabled: false },
+    { id: 'graph', label: 'Relationship Graph', enabled: false },
+    { id: 'memory', label: 'Memory Browser', enabled: false },
   ];
 
   return (
@@ -33,7 +30,7 @@ export default function Dashboard() {
         <h1 style={{ fontSize: 14, margin: 0, color: '#7c5cff' }}>
           HATCHERY
         </h1>
-        <span style={{ fontSize: 8, color: '#666' }}>AI Startup Dashboard</span>
+        <span style={{ fontSize: 8, color: '#666' }}>Spawn and run an autonomous startup team</span>
       </header>
 
       {/* Tab bar */}
@@ -45,30 +42,46 @@ export default function Dashboard() {
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => {
+              if (tab.enabled) setActiveTab(tab.id);
+            }}
             style={{
               padding: '12px 20px',
               fontSize: 8,
               background: activeTab === tab.id ? '#1a1a3a' : 'transparent',
-              color: activeTab === tab.id ? '#7c5cff' : '#666',
+              color: tab.enabled
+                ? activeTab === tab.id ? '#7c5cff' : '#666'
+                : '#4a4a6a',
               border: 'none',
               borderBottom: activeTab === tab.id ? '2px solid #7c5cff' : '2px solid transparent',
-              cursor: 'pointer',
+              cursor: tab.enabled ? 'pointer' : 'not-allowed',
               fontFamily: 'inherit',
+              opacity: tab.enabled ? 1 : 0.65,
             }}
+            disabled={!tab.enabled}
           >
             {tab.label}
+            {!tab.enabled ? ' (soon)' : ''}
           </button>
         ))}
       </nav>
 
       {/* Content */}
       <main style={{ padding: 24 }}>
-        {activeTab === 'office' && <PixelOffice />}
+        {activeTab === 'control' && <ControlPanel />}
         {activeTab === 'feed' && <SignalFeed />}
-        {activeTab === 'missions' && <MissionList />}
-        {activeTab === 'relationships' && <RelationshipGraph />}
-        {activeTab === 'memories' && <MemoryBrowser />}
+        {activeTab !== 'control' && activeTab !== 'feed' && (
+          <div style={{
+            border: '1px solid #2a2a5a',
+            borderRadius: 6,
+            padding: 20,
+            fontSize: 8,
+            color: '#777',
+            maxWidth: 640,
+          }}>
+            This module is intentionally disabled for MVP. It will return in a later release.
+          </div>
+        )}
       </main>
     </div>
   );
