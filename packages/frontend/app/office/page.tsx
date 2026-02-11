@@ -1,25 +1,66 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import OfficeCanvasWithAgents from '@/components/office/office-canvas-with-agents';
-import { useAgents, useThoughts } from '@/hooks/use-agents';
+import ThoughtTracePanel from '@/components/office/thought-trace-panel';
+import CommunicationsLayer from '@/components/office/communications-layer';
+import { useAgents, useThoughts, useEvents } from '@/hooks/use-agents';
 
 export default function OfficePage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const { agents, isLoading: agentsLoading, error: agentsError } = useAgents();
-  const { 
-    thoughts, 
-    isLoading: thoughtsLoading 
-  } = useThoughts(selectedAgentId, 10);
+  const { thoughts, isLoading: thoughtsLoading } = useThoughts(selectedAgentId, 20);
+  const { events } = useEvents(50, ['agent.message', 'agent.dm', 'agent.system']);
+
+  // Transform events to messages for communications layer
+  const messages = useMemo(() => {
+    return events
+      .filter((e) => e.kind?.includes('message') || e.kind?.includes('dm'))
+      .map((e) => ({
+        id: e.id,
+        fromAgentId: e.agentId,
+        toAgentId: e.data?.toAgentId || e.agentId,
+        content: e.data?.content || e.data?.message || '',
+        type: e.kind.includes('dm') ? 'dm' : e.kind.includes('system') ? 'system' : 'chat',
+        timestamp: e.timestamp,
+      }));
+  }, [events]);
+
+  // Build agent positions map for communications
+  const agentPositions = useMemo(() => {
+    const positions: Record<string, { x: number; y: number; color: string }> = {};
+    agents.forEach((agent) => {
+      positions[agent.id] = {
+        x: agent.x,
+        y: agent.y - 20,
+        color: agent.color || '#9e9e9e',
+      };
+    });
+    return positions;
+  }, [agents]);
+
+  // Transform agents for thought panel
+  const agentList = useMemo(() => {
+    return agents.map((a) => ({
+      id: a.id,
+      displayName: a.displayName,
+      color: a.color || '#9e9e9e',
+    }));
+  }, [agents]);
+
+  // Get all thoughts (not filtered) for the panel
+  const allThoughts = useThoughts(null, 20).thoughts;
 
   if (agentsLoading) {
     return (
       <div style={{ padding: 40, textAlign: 'center' }}>
-        <div style={{ 
-          fontFamily: '"Press Start 2P", monospace', 
-          fontSize: 14,
-          color: '#7c5cff' 
-        }}>
+        <div
+          style={{
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: 14,
+            color: '#7c5cff',
+          }}
+        >
           Loading agents...
         </div>
       </div>
@@ -35,134 +76,59 @@ export default function OfficePage() {
   }
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      gap: 20, 
-      padding: 20,
-      backgroundColor: '#0a0a1a',
-      minHeight: '100vh',
-    }}>
+    <div
+      style={{
+        display: 'flex',
+        gap: 20,
+        padding: 20,
+        backgroundColor: '#0a0a1a',
+        minHeight: '100vh',
+      }}
+    >
       {/* Main Office Canvas */}
-      <div>
-        <h1 style={{
-          fontFamily: '"Press Start 2P", monospace',
-          fontSize: 16,
-          color: '#7c5cff',
-          marginBottom: 16,
-        }}>
+      <div style={{ position: 'relative' }}>
+        <h1
+          style={{
+            fontFamily: '"Press Start 2P", monospace',
+            fontSize: 16,
+            color: '#7c5cff',
+            marginBottom: 16,
+          }}
+        >
           🏢 Hatchery Office
         </h1>
-        <OfficeCanvasWithAgents
-          agents={agents}
-          selectedAgentId={selectedAgentId}
-          onAgentClick={setSelectedAgentId}
-        />
-        <div style={{ 
-          marginTop: 12, 
-          fontSize: 10, 
-          color: '#666',
-          fontFamily: 'monospace',
-        }}>
-          💡 Click an agent to see their thoughts • Data updates every 5s
+        <div style={{ position: 'relative' }}>
+          <OfficeCanvasWithAgents
+            agents={agents}
+            selectedAgentId={selectedAgentId}
+            onAgentClick={setSelectedAgentId}
+          />
+          <CommunicationsLayer
+            messages={messages}
+            agentPositions={agentPositions}
+          />
+        </div>
+        <div
+          style={{
+            marginTop: 12,
+            fontSize: 10,
+            color: '#666',
+            fontFamily: 'monospace',
+          }}
+        >
+          💡 Click an agent to filter • Watch messages flow between agents • Data updates
+          every 5s
         </div>
       </div>
 
       {/* Thought Trace Panel */}
-      <div style={{
-        width: 320,
-        backgroundColor: '#1a1a3a',
-        border: '2px solid #2a2a5a',
-        borderRadius: 4,
-        padding: 16,
-      }}>
-        <h2 style={{
-          fontFamily: '"Press Start 2P", monospace',
-          fontSize: 10,
-          color: '#7c5cff',
-          marginBottom: 16,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-        }}>
-          💭 Live Thoughts
-          <span style={{ 
-            fontSize: 8, 
-            color: '#4caf50',
-            animation: 'pulse 2s infinite',
-          }}>
-            ● LIVE
-          </span>
-        </h2>
-
-        {selectedAgentId ? (
-          <div>
-            <div style={{
-              fontSize: 12,
-              color: '#ccc',
-              marginBottom: 12,
-              paddingBottom: 12,
-              borderBottom: '1px solid #2a2a5a',
-            }}>
-              🧠 {agents.find(a => a.id === selectedAgentId)?.displayName || selectedAgentId}
-            </div>
-
-            {thoughtsLoading ? (
-              <div style={{ color: '#666', fontSize: 10 }}>Loading thoughts...</div>
-            ) : thoughts.length === 0 ? (
-              <div style={{ color: '#666', fontSize: 10 }}>No thoughts yet...</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {thoughts.map((thought) => (
-                  <ThoughtBubble key={thought.id} thought={thought} />
-                ))}
-              </div>
-            )}
-          </div>
-        ) : (
-          <div style={{
-            color: '#666',
-            fontSize: 10,
-            textAlign: 'center',
-            padding: '40px 20px',
-          }}>
-            Click an agent to see their thoughts
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ThoughtBubble({ thought }: { thought: { id: string; content: string; timestamp: string } }) {
-  const time = new Date(thought.timestamp).toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  return (
-    <div style={{
-      backgroundColor: '#252545',
-      borderRadius: 4,
-      padding: 12,
-      position: 'relative',
-    }}>
-      <div style={{
-        fontSize: 10,
-        color: '#ccc',
-        lineHeight: 1.5,
-        fontFamily: 'system-ui, sans-serif',
-      }}>
-        {thought.content}
-      </div>
-      <div style={{
-        fontSize: 8,
-        color: '#666',
-        marginTop: 8,
-        textAlign: 'right',
-      }}>
-        {time}
-      </div>
+      <ThoughtTracePanel
+        thoughts={allThoughts}
+        agents={agentList}
+        selectedAgentId={selectedAgentId}
+        onAgentClick={setSelectedAgentId}
+        isLoading={thoughtsLoading}
+      />
     </div>
   );
 }
