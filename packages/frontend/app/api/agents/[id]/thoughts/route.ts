@@ -6,62 +6,52 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
+    const agentId = params.id;
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const kinds = searchParams.get('kinds')?.split(',') || [];
-    const after = searchParams.get('after');
-    const agentId = searchParams.get('agentId');
+    const limit = parseInt(searchParams.get('limit') || '20');
+    const after = searchParams.get('after'); // Cursor for pagination
 
     let query = supabase
       .from('ops_events')
-      .select(`
-        id,
-        kind,
-        agent_id,
-        data,
-        created_at
-      `)
+      .select('*')
+      .eq('agent_id', agentId)
+      .eq('kind', 'agent.thought')
       .order('created_at', { ascending: false })
       .limit(Math.min(limit, 100));
-
-    if (kinds.length > 0) {
-      query = query.in('kind', kinds);
-    }
-
-    if (agentId) {
-      query = query.eq('agent_id', agentId);
-    }
 
     if (after) {
       query = query.lt('created_at', after);
     }
 
-    const { data: events, error } = await query;
+    const { data: thoughts, error } = await query;
 
     if (error) {
-      console.error('Error fetching events:', error);
+      console.error('Error fetching thoughts:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch events' },
+        { error: 'Failed to fetch thoughts' },
         { status: 500 }
       );
     }
 
-    // Transform events
-    const transformedEvents = (events || []).map((event: any) => ({
+    // Transform to thought trace format
+    const thoughtTraces = (thoughts || []).map((event: any) => ({
       id: event.id,
-      kind: event.kind,
       agentId: event.agent_id,
-      data: event.data || {},
+      content: event.data?.content || event.data?.message || '',
       timestamp: event.created_at,
+      metadata: event.data?.metadata || {},
     }));
 
     return NextResponse.json({
-      events: transformedEvents,
-      hasMore: transformedEvents.length === limit,
-      nextCursor: transformedEvents.length > 0
-        ? transformedEvents[transformedEvents.length - 1].timestamp
+      thoughts: thoughtTraces,
+      hasMore: thoughtTraces.length === limit,
+      nextCursor: thoughtTraces.length > 0 
+        ? thoughtTraces[thoughtTraces.length - 1].timestamp 
         : null,
     });
   } catch (err) {
@@ -73,30 +63,37 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST to create a new event
-export async function POST(request: NextRequest) {
+// POST to create a new thought (called by agents)
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
+    const agentId = params.id;
     const body = await request.json();
-    const { agentId, kind, data = {} } = body;
+    const { content, metadata = {} } = body;
 
-    if (!agentId || !kind) {
+    if (!content) {
       return NextResponse.json(
-        { error: 'agentId and kind are required' },
+        { error: 'content is required' },
         { status: 400 }
       );
     }
 
     const { error } = await supabase.from('ops_events').insert({
       agent_id: agentId,
-      kind,
-      data,
+      kind: 'agent.thought',
+      data: {
+        content,
+        metadata,
+      },
       created_at: new Date().toISOString(),
     });
 
     if (error) {
-      console.error('Error creating event:', error);
+      console.error('Error creating thought:', error);
       return NextResponse.json(
-        { error: 'Failed to create event' },
+        { error: 'Failed to create thought' },
         { status: 500 }
       );
     }
