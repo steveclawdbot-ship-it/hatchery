@@ -4,13 +4,14 @@ import { useState, useMemo } from 'react';
 import OfficeCanvasWithAgents from '@/components/office/office-canvas-with-agents';
 import ThoughtTracePanel from '@/components/office/thought-trace-panel';
 import CommunicationsLayer from '@/components/office/communications-layer';
+import EventStreamPanel from '@/components/office/event-stream-panel';
 import { useAgents, useThoughts, useEvents } from '@/hooks/use-agents';
 
 export default function OfficePage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const { agents, isLoading: agentsLoading, error: agentsError } = useAgents();
   const { thoughts, isLoading: thoughtsLoading } = useThoughts(selectedAgentId, 20);
-  const { events } = useEvents(50, ['agent.message', 'agent.dm', 'agent.system']);
+  const { events } = useEvents(100);
 
   // Transform events to messages for communications layer
   const messages = useMemo(() => {
@@ -48,7 +49,7 @@ export default function OfficePage() {
     }));
   }, [agents]);
 
-  // Get all thoughts (not filtered) for the panel
+  // Get all thoughts for the panel
   const allThoughts = useThoughts(null, 20).thoughts;
 
   if (agentsLoading) {
@@ -79,56 +80,70 @@ export default function OfficePage() {
     <div
       style={{
         display: 'flex',
-        gap: 20,
-        padding: 20,
+        flexDirection: 'column',
+        height: '100vh',
         backgroundColor: '#0a0a1a',
-        minHeight: '100vh',
+        overflow: 'hidden',
       }}
     >
-      {/* Main Office Canvas */}
-      <div style={{ position: 'relative' }}>
-        <h1
-          style={{
-            fontFamily: '"Press Start 2P", monospace',
-            fontSize: 16,
-            color: '#7c5cff',
-            marginBottom: 16,
-          }}
-        >
-          🏢 Hatchery Office
-        </h1>
-        <div style={{ position: 'relative' }}>
-          <OfficeCanvasWithAgents
-            agents={agents}
-            selectedAgentId={selectedAgentId}
-            onAgentClick={setSelectedAgentId}
-          />
-          <CommunicationsLayer
-            messages={messages}
-            agentPositions={agentPositions}
-          />
+      {/* Main content area */}
+      <div
+        style={{
+          display: 'flex',
+          flex: 1,
+          gap: 20,
+          padding: 20,
+          overflow: 'hidden',
+        }}
+      >
+        {/* Office Canvas */}
+        <div style={{ position: 'relative', flex: 1 }}>
+          <h1
+            style={{
+              fontFamily: '"Press Start 2P", monospace',
+              fontSize: 16,
+              color: '#7c5cff',
+              marginBottom: 16,
+            }}
+          >
+            🏢 Hatchery Office
+          </h1>
+          <div style={{ position: 'relative' }}>
+            <OfficeCanvasWithAgents
+              agents={agents}
+              selectedAgentId={selectedAgentId}
+              onAgentClick={setSelectedAgentId}
+            />
+            <CommunicationsLayer
+              messages={messages}
+              agentPositions={agentPositions}
+            />
+          </div>
+          <div
+            style={{
+              marginTop: 12,
+              fontSize: 10,
+              color: '#666',
+              fontFamily: 'monospace',
+            }}
+          >
+            💡 Click an agent to filter • Watch messages flow between agents • Data updates
+            every 5s
+          </div>
         </div>
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: 10,
-            color: '#666',
-            fontFamily: 'monospace',
-          }}
-        >
-          💡 Click an agent to filter • Watch messages flow between agents • Data updates
-          every 5s
-        </div>
+
+        {/* Thought Trace Panel */}
+        <ThoughtTracePanel
+          thoughts={allThoughts}
+          agents={agentList}
+          selectedAgentId={selectedAgentId}
+          onAgentClick={setSelectedAgentId}
+          isLoading={thoughtsLoading}
+        />
       </div>
 
-      {/* Thought Trace Panel */}
-      <ThoughtTracePanel
-        thoughts={allThoughts}
-        agents={agentList}
-        selectedAgentId={selectedAgentId}
-        onAgentClick={setSelectedAgentId}
-        isLoading={thoughtsLoading}
-      />
+      {/* Event Stream Panel */}
+      <EventStreamPanel events={events} agents={agentList} />
     </div>
   );
 }
