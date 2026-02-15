@@ -184,7 +184,7 @@ export default function RelationshipGraph() {
           backgroundColor: '#0a0a1a',
         }}
       />
-      <div style={{ marginTop: 8, fontSize: 6, color: '#666', display: 'flex', gap: 16 }}>
+      <div style={{ marginTop: 8, fontSize: 10, color: '#666', display: 'flex', gap: 16 }}>
         <span><span style={{ color: '#4CAF50' }}>━━</span> High affinity ({'>'} 0.6)</span>
         <span><span style={{ color: '#FFF333' }}>━━</span> Neutral (0.4–0.6)</span>
         <span><span style={{ color: '#F44336' }}>━━</span> Tension ({'<'} 0.4)</span>

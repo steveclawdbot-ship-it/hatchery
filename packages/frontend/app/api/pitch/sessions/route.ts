@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
+import { getPitchProviderOrDefault, normalizePitchProvider } from '@/lib/pitch/llm';
 
 // POST: Create new pitch session
 export async function POST(req: Request) {
@@ -9,7 +10,19 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json();
-    const { startup_name, provider = 'anthropic' } = body;
+    const startup_name = typeof body?.startup_name === 'string' ? body.startup_name : null;
+    const requestedProvider = body?.provider;
+    const provider =
+      requestedProvider === undefined
+        ? getPitchProviderOrDefault(undefined)
+        : normalizePitchProvider(requestedProvider);
+
+    if (!provider) {
+      return Response.json(
+        { error: `Unsupported provider: ${String(requestedProvider)}` },
+        { status: 400 }
+      );
+    }
 
     const { data, error } = await db
       .from('pitch_sessions')

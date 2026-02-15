@@ -125,7 +125,7 @@ export default function ControlPanel() {
       : '#F44336';
 
   return (
-    <div style={{ display: 'grid', gap: 16, maxWidth: 780 }}>
+    <div style={{ display: 'grid', gap: 20, maxWidth: 960 }}>
       <section style={{ border: '1px solid #2a2a5a', borderRadius: 6, padding: 16 }}>
         <div style={{
           display: 'flex',
@@ -133,9 +133,9 @@ export default function ControlPanel() {
           alignItems: 'center',
           marginBottom: 12,
         }}>
-          <h2 style={{ fontSize: 10, margin: 0 }}>Control Panel</h2>
+          <h2 style={{ fontSize: 18, margin: 0 }}>Control Panel</h2>
           <span style={{
-            fontSize: 7,
+            fontSize: 11,
             color: modeColor,
             background: `${modeColor}22`,
             padding: '4px 8px',
@@ -256,7 +256,7 @@ export default function ControlPanel() {
       </section>
 
       <section style={{ border: '1px solid #2a2a5a', borderRadius: 6, padding: 16 }}>
-        <h3 style={{ fontSize: 9, margin: '0 0 12px 0' }}>Execution Controls</h3>
+        <h3 style={{ fontSize: 16, margin: '0 0 12px 0' }}>Execution Controls</h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <ControlButton
             label="Run Now"
@@ -281,7 +281,7 @@ export default function ControlPanel() {
           />
         </div>
 
-        <div style={{ marginTop: 12, fontSize: 7, color: '#8a8a9a' }}>
+        <div style={{ marginTop: 12, fontSize: 11, color: '#8a8a9a' }}>
           Polling cadence: every {control.pollingMinutes} minutes.
           {' '}
           {control.updatedAt ? `Last mode update: ${new Date(control.updatedAt).toLocaleString()}.` : ''}
@@ -289,12 +289,12 @@ export default function ControlPanel() {
       </section>
 
       {message && (
-        <div style={{ border: '1px solid #2b5f44', background: '#103020', padding: 10, fontSize: 7, color: '#7fe0a8', borderRadius: 6 }}>
+        <div style={{ border: '1px solid #2b5f44', background: '#103020', padding: 10, fontSize: 11, color: '#7fe0a8', borderRadius: 6 }}>
           {message}
         </div>
       )}
       {error && (
-        <div style={{ border: '1px solid #5f2b2b', background: '#301010', padding: 10, fontSize: 7, color: '#ff8f8f', borderRadius: 6 }}>
+        <div style={{ border: '1px solid #5f2b2b', background: '#301010', padding: 10, fontSize: 11, color: '#ff8f8f', borderRadius: 6 }}>
           {error}
         </div>
       )}
@@ -333,12 +333,12 @@ function ControlButton(
 const labelStyle: CSSProperties = {
   display: 'grid',
   gap: 4,
-  fontSize: 7,
+  fontSize: 11,
   color: '#a0a0b5',
 };
 
 const inputStyle: CSSProperties = {
-  fontSize: 8,
+  fontSize: 14,
   padding: '8px 10px',
   background: '#111129',
   border: '1px solid #2a2a5a',
@@ -350,8 +350,8 @@ const inputStyle: CSSProperties = {
 const buttonStyle: CSSProperties = {
   border: '1px solid #2a2a5a',
   borderRadius: 4,
-  fontSize: 7,
-  padding: '8px 12px',
+  fontSize: 12,
+  padding: '10px 16px',
   cursor: 'pointer',
   fontFamily: 'inherit',
 };

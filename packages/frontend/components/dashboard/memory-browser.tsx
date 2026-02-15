@@ -58,7 +58,7 @@ export default function MemoryBrowser() {
 
   return (
     <div>
-      <h2 style={{ fontSize: 10, marginBottom: 16 }}>Memory Browser</h2>
+      <h2 style={{ fontSize: 18, marginBottom: 16 }}>Memory Browser</h2>
 
       {/* Filters */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -68,7 +68,7 @@ export default function MemoryBrowser() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           style={{
-            fontSize: 8,
+            fontSize: 12,
             padding: '6px 10px',
             backgroundColor: '#1a1a3a',
             border: '1px solid #2a2a5a',
@@ -83,7 +83,7 @@ export default function MemoryBrowser() {
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
           style={{
-            fontSize: 8,
+            fontSize: 12,
             padding: '6px 10px',
             backgroundColor: '#1a1a3a',
             border: '1px solid #2a2a5a',
@@ -104,7 +104,7 @@ export default function MemoryBrowser() {
           value={filterAgent}
           onChange={(e) => setFilterAgent(e.target.value)}
           style={{
-            fontSize: 8,
+            fontSize: 12,
             padding: '6px 10px',
             backgroundColor: '#1a1a3a',
             border: '1px solid #2a2a5a',
@@ -123,7 +123,7 @@ export default function MemoryBrowser() {
       {/* Memory cards */}
       <div style={{ display: 'grid', gap: 8 }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 8, color: '#666' }}>
+          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#666' }}>
             No memories found.
           </div>
         ) : (
@@ -140,7 +140,7 @@ export default function MemoryBrowser() {
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <span style={{
-                    fontSize: 6,
+                    fontSize: 10,
                     padding: '2px 6px',
                     backgroundColor: (TYPE_COLORS[memory.type] ?? '#666') + '22',
                     color: TYPE_COLORS[memory.type] ?? '#666',
@@ -148,7 +148,7 @@ export default function MemoryBrowser() {
                   }}>
                     {memory.type}
                   </span>
-                  <span style={{ fontSize: 7, color: '#7c5cff' }}>{memory.agent_id}</span>
+                  <span style={{ fontSize: 11, color: '#7c5cff' }}>{memory.agent_id}</span>
                 </div>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   {/* Confidence bar */}
@@ -164,19 +164,19 @@ export default function MemoryBrowser() {
                       backgroundColor: memory.confidence > 0.7 ? '#4CAF50' : '#FF9800',
                     }} />
                   </div>
-                  <span style={{ fontSize: 6, color: '#888' }}>
+                  <span style={{ fontSize: 10, color: '#888' }}>
                     {(memory.confidence * 100).toFixed(0)}%
                   </span>
                 </div>
               </div>
-              <div style={{ fontSize: 8, lineHeight: 1.5 }}>{memory.content}</div>
+              <div style={{ fontSize: 12, lineHeight: 1.5 }}>{memory.content}</div>
               {memory.tags.length > 0 && (
                 <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
                   {memory.tags.map((tag) => (
                     <span
                       key={tag}
                       style={{
-                        fontSize: 6,
+                        fontSize: 10,
                         padding: '1px 4px',
                         backgroundColor: '#2a2a5a',
                         borderRadius: 2,

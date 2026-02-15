@@ -125,7 +125,7 @@ export default function PitchLanding() {
             The Pitch Meeting
           </h1>
           <p style={{ fontSize: 14, color: '#7a7a92', lineHeight: 1.6 }}>
-            Pitch your AI startup to a Y Combinator partner.
+            Pitch your startup to a startup incubator.
             <br />
             Get challenged. Get refined. Get generated.
           </p>

@@ -66,9 +66,9 @@ export default function SignalFeed() {
         alignItems: 'center',
         marginBottom: 16,
       }}>
-        <h2 style={{ fontSize: 10, margin: 0 }}>Mission Feed</h2>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Mission Feed</h2>
         <span style={{
-          fontSize: 6,
+          fontSize: 11,
           padding: '4px 8px',
           backgroundColor: status === 'live' ? '#4CAF5033' : '#F4433633',
           color: status === 'live' ? '#4CAF50' : '#F44336',
@@ -78,7 +78,7 @@ export default function SignalFeed() {
         </span>
       </div>
 
-      <div style={{ fontSize: 6, color: '#7a7a92', marginBottom: 8 }}>
+      <div style={{ fontSize: 11, color: '#7a7a92', marginBottom: 8 }}>
         Updates every 5 minutes.
         {' '}
         {lastUpdated ? `Last sync: ${new Date(lastUpdated).toLocaleTimeString()}` : 'Waiting for first sync...'}
@@ -93,7 +93,7 @@ export default function SignalFeed() {
         }}
       >
         {events.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 8, color: '#666' }}>
+          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#666' }}>
             No events yet. Start the heartbeat to see activity.
           </div>
         ) : (
@@ -109,7 +109,7 @@ export default function SignalFeed() {
               }}
             >
               <span style={{
-                fontSize: 6,
+                fontSize: 10,
                 color: '#666',
                 whiteSpace: 'nowrap',
                 marginTop: 2,
@@ -117,7 +117,7 @@ export default function SignalFeed() {
                 {new Date(event.createdAt).toLocaleTimeString()}
               </span>
               <span style={{
-                fontSize: 6,
+                fontSize: 10,
                 padding: '2px 6px',
                 backgroundColor: getKindColor(event.kind) + '22',
                 color: getKindColor(event.kind),
@@ -127,13 +127,13 @@ export default function SignalFeed() {
                 {event.kind}
               </span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 8, marginBottom: 2 }}>
+                <div style={{ fontSize: 13, marginBottom: 2 }}>
                   <span style={{ color: '#7c5cff' }}>{event.agentId}</span>
                   {' '}
                   {event.title}
                 </div>
                 {event.summary && (
-                  <div style={{ fontSize: 7, color: '#888' }}>
+                  <div style={{ fontSize: 11, color: '#888' }}>
                     {event.summary.slice(0, 200)}
                   </div>
                 )}

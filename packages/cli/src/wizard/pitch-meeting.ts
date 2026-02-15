@@ -50,7 +50,7 @@ export async function runPitchMeeting(
   console.log('');
   console.log(chalk.bold.cyan('╔══════════════════════════════════════════════════╗'));
   console.log(chalk.bold.cyan('║          THE PITCH MEETING                       ║'));
-  console.log(chalk.bold.cyan('║  You are pitching to a Y Combinator partner.     ║'));
+  console.log(chalk.bold.cyan('║  You are pitching to a startup incubator.        ║'));
   console.log(chalk.bold.cyan('║  They will challenge you. That is the point.     ║'));
   console.log(chalk.bold.cyan('╚══════════════════════════════════════════════════╝'));
   console.log('');

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
-import type { PitchSession, ChatMessage, Round } from '@/lib/pitch/types';
+import type { PitchSession, ChatMessage } from '@/lib/pitch/types';
 import { PITCH_ROUNDS } from '@/lib/pitch/prompts';
 import ChatWindow from '@/components/pitch/chat-window';
 import InputArea from '@/components/pitch/input-area';
@@ -24,6 +24,7 @@ export default function PitchSessionPage({
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState('');
   const [canSynthesize, setCanSynthesize] = useState(false);
+  const [hasLoadedSession, setHasLoadedSession] = useState(false);
 
   // Load session data
   const loadSession = useCallback(async () => {
@@ -34,9 +35,15 @@ export default function PitchSessionPage({
           router.push('/pitch');
           return;
         }
-        throw new Error('Failed to load session');
+        const payload = await res.json().catch(() => null);
+        throw new Error(
+          payload?.error && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to load session'
+        );
       }
       const data: PitchSession = await res.json();
+      setError('');
       setSession(data);
       setCanSynthesize(data.current_round > 4 || data.rounds.length >= 4);
 
@@ -62,6 +69,8 @@ export default function PitchSessionPage({
       setMessages(chatMessages);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load session');
+    } finally {
+      setHasLoadedSession(true);
     }
   }, [sessionId, router]);
 
@@ -109,7 +118,12 @@ export default function PitchSessionPage({
       });
 
       if (!res.ok) {
-        throw new Error('Failed to get response');
+        const payload = await res.json().catch(() => null);
+        throw new Error(
+          payload?.error && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to get response'
+        );
       }
 
       const reader = res.body?.getReader();
@@ -130,45 +144,41 @@ export default function PitchSessionPage({
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
+            let data: Record<string, unknown>;
             try {
-              const data = JSON.parse(line.slice(6));
+              data = JSON.parse(line.slice(6)) as Record<string, unknown>;
+            } catch {
+              continue;
+            }
 
-              if (data.chunk) {
-                // Update streaming message content
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === vcId ? { ...m, content: m.content + data.chunk } : m
-                  )
-                );
+            if (typeof data.error === 'string' && data.error) {
+              throw new Error(data.error);
+            }
+
+            if (typeof data.chunk === 'string' && data.chunk) {
+              // Update streaming message content
+              setMessages((prev) =>
+                prev.map((m) => (m.id === vcId ? { ...m, content: m.content + data.chunk } : m))
+              );
+            }
+
+            if (data.done === true) {
+              // Mark streaming complete
+              setMessages((prev) =>
+                prev.map((m) => (m.id === vcId ? { ...m, isStreaming: false } : m))
+              );
+
+              // Update session state
+              if (data.canSynthesize === true) {
+                setCanSynthesize(true);
+              }
+              const nextRound = data.nextRound;
+              if (typeof nextRound === 'number' && Number.isFinite(nextRound)) {
+                setSession((prev) => (prev ? { ...prev, current_round: nextRound } : prev));
               }
 
-              if (data.done) {
-                // Mark streaming complete
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === vcId ? { ...m, isStreaming: false } : m
-                  )
-                );
-
-                // Update session state
-                if (data.canSynthesize) {
-                  setCanSynthesize(true);
-                }
-                if (data.nextRound) {
-                  setSession((prev) =>
-                    prev ? { ...prev, current_round: data.nextRound } : prev
-                  );
-                }
-
-                // Reload session to get updated rounds
-                await loadSession();
-              }
-
-              if (data.error) {
-                throw new Error(data.error);
-              }
-            } catch (parseErr) {
-              // Ignore parse errors for incomplete chunks
+              // Reload session to get updated rounds
+              await loadSession();
             }
           }
         }
@@ -223,16 +233,67 @@ export default function PitchSessionPage({
   }
 
   if (!session) {
+    if (!hasLoadedSession) {
+      return (
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div style={{ fontSize: 13, color: '#7a7a92' }}>Loading session...</div>
+        </div>
+      );
+    }
+
     return (
       <div
         style={{
           flex: 1,
           display: 'flex',
+          flexDirection: 'column',
+          gap: 12,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
-        <div style={{ fontSize: 8, color: '#7a7a92' }}>Loading session...</div>
+        <div style={{ fontSize: 13, color: '#ff8f8f' }}>
+          {error || 'Failed to load this session.'}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={() => loadSession()}
+            style={{
+              fontSize: 12,
+              padding: '10px 16px',
+              background: '#1a1a3a',
+              border: '1px solid #2a2a5a',
+              borderRadius: 4,
+              color: '#9aa0ff',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Retry
+          </button>
+          <button
+            onClick={() => router.push('/pitch')}
+            style={{
+              fontSize: 12,
+              padding: '10px 16px',
+              background: 'transparent',
+              border: '1px solid #2a2a5a',
+              borderRadius: 4,
+              color: '#7a7a92',
+              cursor: 'pointer',
+              fontFamily: 'inherit',
+            }}
+          >
+            Back to sessions
+          </button>
+        </div>
       </div>
     );
   }
@@ -272,7 +333,7 @@ export default function PitchSessionPage({
             padding: '10px 16px',
             background: '#301010',
             borderBottom: '1px solid #5f2b2b',
-            fontSize: 7,
+            fontSize: 11,
             color: '#ff8f8f',
           }}
         >
@@ -296,7 +357,7 @@ export default function PitchSessionPage({
           <button
             onClick={handleSynthesize}
             style={{
-              fontSize: 7,
+              fontSize: 12,
               padding: '10px 20px',
               background: '#FF980033',
               border: '1px solid #FF9800',

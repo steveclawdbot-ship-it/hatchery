@@ -17,6 +17,12 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
   const [isApproving, setIsApproving] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    if (!isSynthesizing) {
+      setRevisedPitch(session.revised_pitch || '');
+    }
+  }, [session.revised_pitch, isSynthesizing]);
+
   // Start synthesis if needed
   useEffect(() => {
     if (session.status === 'synthesis' && !session.revised_pitch) {
@@ -34,7 +40,12 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
       });
 
       if (!res.ok) {
-        throw new Error('Failed to start synthesis');
+        const payload = await res.json().catch(() => null);
+        throw new Error(
+          payload?.error && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to start synthesis'
+        );
       }
 
       const reader = res.body?.getReader();
@@ -54,23 +65,24 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
+            let data: Record<string, unknown>;
             try {
-              const data = JSON.parse(line.slice(6));
-
-              if (data.chunk) {
-                fullPitch += data.chunk;
-                setRevisedPitch(fullPitch);
-              }
-
-              if (data.done) {
-                onRefresh();
-              }
-
-              if (data.error) {
-                throw new Error(data.error);
-              }
+              data = JSON.parse(line.slice(6)) as Record<string, unknown>;
             } catch {
-              // Ignore parse errors
+              continue;
+            }
+
+            if (typeof data.error === 'string' && data.error) {
+              throw new Error(data.error);
+            }
+
+            if (typeof data.chunk === 'string' && data.chunk) {
+              fullPitch += data.chunk;
+              setRevisedPitch(fullPitch);
+            }
+
+            if (data.done === true) {
+              onRefresh();
             }
           }
         }
@@ -107,8 +119,17 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
   }
 
   async function handleRedo() {
+    setError('');
+    setIsEditing(false);
     setRevisedPitch('');
-    await startSynthesis();
+    setIsApproving(true);
+    try {
+      await onApprove(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restart synthesis');
+    } finally {
+      setIsApproving(false);
+    }
   }
 
   return (
@@ -122,10 +143,10 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
-          <h2 style={{ fontSize: 12, margin: '0 0 8px 0', color: '#e0e0e0' }}>
+          <h2 style={{ fontSize: 18, margin: '0 0 8px 0', color: '#e0e0e0' }}>
             {isSynthesizing ? 'Synthesizing Your Pitch...' : 'Revised Pitch'}
           </h2>
-          <p style={{ fontSize: 7, color: '#7a7a92', margin: 0 }}>
+          <p style={{ fontSize: 12, color: '#7a7a92', margin: 0 }}>
             {isSynthesizing
               ? 'The VC is distilling your pitch meeting into a refined brief.'
               : 'Review and approve or edit the synthesized pitch.'}
@@ -139,7 +160,7 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
               background: '#301010',
               border: '1px solid #5f2b2b',
               borderRadius: 6,
-              fontSize: 7,
+              fontSize: 11,
               color: '#ff8f8f',
               marginBottom: 16,
             }}
@@ -168,7 +189,7 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
           ) : (
             <pre
               style={{
-                fontSize: 7,
+                fontSize: 12,
                 lineHeight: 1.8,
                 color: '#e0e0e0',
                 whiteSpace: 'pre-wrap',
@@ -275,7 +296,7 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
 }
 
 const buttonStyle: CSSProperties = {
-  fontSize: 8,
+  fontSize: 12,
   padding: '12px 24px',
   border: 'none',
   borderRadius: 6,
@@ -286,7 +307,7 @@ const buttonStyle: CSSProperties = {
 const textareaStyle: CSSProperties = {
   width: '100%',
   minHeight: 400,
-  fontSize: 7,
+  fontSize: 12,
   lineHeight: 1.8,
   padding: 0,
   background: 'transparent',

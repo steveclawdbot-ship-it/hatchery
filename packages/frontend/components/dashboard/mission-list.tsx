@@ -70,14 +70,14 @@ export default function MissionList() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 10, margin: 0 }}>Missions</h2>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Missions</h2>
         <div style={{ display: 'flex', gap: 8 }}>
           {['all', 'running', 'succeeded', 'failed'].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               style={{
-                fontSize: 6,
+                fontSize: 10,
                 padding: '4px 8px',
                 background: filter === f ? '#2a2a5a' : 'transparent',
                 color: filter === f ? '#7c5cff' : '#666',
@@ -95,7 +95,7 @@ export default function MissionList() {
 
       <div style={{ border: '1px solid #2a2a5a', borderRadius: 4 }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 8, color: '#666' }}>
+          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#666' }}>
             No missions found.
           </div>
         ) : (
@@ -121,9 +121,9 @@ export default function MissionList() {
                   borderRadius: '50%',
                   display: 'inline-block',
                 }} />
-                <span style={{ fontSize: 8, flex: 1 }}>{mission.title}</span>
-                <span style={{ fontSize: 6, color: '#7c5cff' }}>{mission.created_by}</span>
-                <span style={{ fontSize: 6, color: '#666' }}>
+                <span style={{ fontSize: 12, flex: 1 }}>{mission.title}</span>
+                <span style={{ fontSize: 10, color: '#7c5cff' }}>{mission.created_by}</span>
+                <span style={{ fontSize: 10, color: '#666' }}>
                   {mission.completed_steps}/{mission.total_steps}
                 </span>
               </div>
@@ -132,7 +132,7 @@ export default function MissionList() {
                 <div style={{ padding: '0 12px 10px 32px' }}>
                   {mission.steps.map((step) => (
                     <div key={step.id} style={{
-                      fontSize: 7,
+                      fontSize: 11,
                       padding: '4px 0',
                       color: step.status === 'succeeded' ? '#4CAF50'
                         : step.status === 'failed' ? '#F44336'

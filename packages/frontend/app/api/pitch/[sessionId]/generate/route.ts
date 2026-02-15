@@ -1,4 +1,3 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import {
   AGENT_GENERATION_PROMPT,
@@ -6,7 +5,17 @@ import {
   STRATEGY_GENERATION_PROMPT,
   formatTranscript,
 } from '@/lib/pitch/prompts';
-import type { Round, AgentConfig, WorkerConfig } from '@/lib/pitch/types';
+import {
+  generatePitchText,
+  getMissingProviderKeyError,
+  getPitchProviderOrDefault,
+  getProviderContext,
+  type PitchProvider,
+} from '@/lib/pitch/llm';
+import type { Round, AgentConfig, WorkerConfig, GeneratedConfigs } from '@/lib/pitch/types';
+
+const STRATEGY_SYSTEM_PROMPT =
+  'You are a startup strategist. Write actionable strategy documents, not fluffy mission statements.';
 
 export async function POST(
   _req: Request,
@@ -17,11 +26,6 @@ export async function POST(
 
   if (!db) {
     return Response.json({ error: 'Database not configured' }, { status: 500 });
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
   }
 
   try {
@@ -44,187 +48,151 @@ export async function POST(
       return Response.json({ error: 'No revised pitch to generate from' }, { status: 400 });
     }
 
+    const provider = getPitchProviderOrDefault(session.provider);
+    const providerContext = getProviderContext(provider);
+    if (!providerContext) {
+      return Response.json({ error: getMissingProviderKeyError(provider) }, { status: 500 });
+    }
+
     const rounds: Round[] = session.rounds || [];
     const revisedPitch = session.revised_pitch;
     const startupName = session.startup_name || 'AI Startup';
+
+    const persistedAgentConfig = isAgentConfig(session.agent_config) ? session.agent_config : null;
+    const persistedWorkerConfig = isWorkerConfig(session.worker_config) ? session.worker_config : null;
+    const persistedStrategy =
+      typeof session.strategy === 'string' && session.strategy.trim().length > 0
+        ? session.strategy
+        : null;
+    const persistedConfigs = isGeneratedConfigs(session.configs) ? session.configs : null;
 
     // Create streaming response for progress updates
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const anthropic = new Anthropic({ apiKey });
-
         function sendEvent(data: Record<string, unknown>) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         }
 
         try {
-          // Step 1: Generate Agent Team
-          sendEvent({ step: 'agents' });
-
-          const agentResponse = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 4000,
-            messages: [
-              {
-                role: 'user',
-                content: `${AGENT_GENERATION_PROMPT}\n\n--- REVISED PITCH ---\n${revisedPitch}\n\nRespond ONLY with valid JSON, no other text.`,
-              },
-            ],
-          });
-
-          const agentText =
-            agentResponse.content[0].type === 'text' ? agentResponse.content[0].text : '';
+          // Step 1: Generate Agent Team (or resume)
           let agentConfig: AgentConfig;
+          if (persistedAgentConfig) {
+            agentConfig = persistedAgentConfig;
+            sendEvent({ completed: 'agents', resumed: true });
+          } else {
+            sendEvent({ step: 'agents' });
 
-          try {
-            // Extract JSON from response (handle potential markdown code blocks)
-            const jsonMatch = agentText.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error('No JSON found in agent response');
-            agentConfig = JSON.parse(jsonMatch[0]);
-          } catch {
-            throw new Error('Failed to parse agent configuration');
+            const agentText = await generatePitchText(providerContext, {
+              mode: 'generation',
+              maxTokens: 4000,
+              temperature: 0.7,
+              prompt: `${AGENT_GENERATION_PROMPT}\n\n--- REVISED PITCH ---\n${revisedPitch}\n\nRespond ONLY with valid JSON, no other text.`,
+            });
+
+            agentConfig = parseJsonObject<AgentConfig>(agentText, 'agent configuration');
+
+            const { error: agentSaveError } = await db
+              .from('pitch_sessions')
+              .update({ agent_config: agentConfig })
+              .eq('id', sessionId);
+
+            if (agentSaveError) {
+              throw new Error(`Failed to save agent config: ${agentSaveError.message}`);
+            }
+
+            sendEvent({ completed: 'agents' });
           }
 
-          // Save agent config
-          await db
-            .from('pitch_sessions')
-            .update({ agent_config: agentConfig })
-            .eq('id', sessionId);
-
-          sendEvent({ completed: 'agents' });
-
-          // Step 2: Generate Worker Configuration
-          sendEvent({ step: 'workers' });
-
-          const agentSummary = agentConfig.agents
-            .map((a) => `- ${a.displayName} (${a.id}): ${a.role}`)
-            .join('\n');
-
-          const workerResponse = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            max_tokens: 4000,
-            messages: [
-              {
-                role: 'user',
-                content: `${WORKER_GENERATION_PROMPT}\n\n--- REVISED PITCH ---\n${revisedPitch}\n\n--- AGENT TEAM ---\n${agentSummary}\n\nRespond ONLY with valid JSON, no other text.`,
-              },
-            ],
-          });
-
-          const workerText =
-            workerResponse.content[0].type === 'text' ? workerResponse.content[0].text : '';
+          // Step 2: Generate Worker Configuration (or resume)
           let workerConfig: WorkerConfig;
+          if (persistedWorkerConfig) {
+            workerConfig = persistedWorkerConfig;
+            sendEvent({ completed: 'workers', resumed: true });
+          } else {
+            sendEvent({ step: 'workers' });
 
-          try {
-            const jsonMatch = workerText.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error('No JSON found in worker response');
-            workerConfig = JSON.parse(jsonMatch[0]);
-          } catch {
-            throw new Error('Failed to parse worker configuration');
+            const agentSummary = agentConfig.agents
+              .map((a) => `- ${a.displayName} (${a.id}): ${a.role}`)
+              .join('\n');
+
+            const workerText = await generatePitchText(providerContext, {
+              mode: 'generation',
+              maxTokens: 4000,
+              temperature: 0.6,
+              prompt: `${WORKER_GENERATION_PROMPT}\n\n--- REVISED PITCH ---\n${revisedPitch}\n\n--- AGENT TEAM ---\n${agentSummary}\n\nRespond ONLY with valid JSON, no other text.`,
+            });
+
+            workerConfig = parseJsonObject<WorkerConfig>(workerText, 'worker configuration');
+
+            const { error: workerSaveError } = await db
+              .from('pitch_sessions')
+              .update({ worker_config: workerConfig })
+              .eq('id', sessionId);
+
+            if (workerSaveError) {
+              throw new Error(`Failed to save worker config: ${workerSaveError.message}`);
+            }
+
+            sendEvent({ completed: 'workers' });
           }
 
-          // Save worker config
-          await db
-            .from('pitch_sessions')
-            .update({ worker_config: workerConfig })
-            .eq('id', sessionId);
+          // Step 3: Generate Strategy (or resume)
+          let strategy: string;
+          if (persistedStrategy) {
+            strategy = persistedStrategy;
+            sendEvent({ completed: 'strategy', resumed: true });
+          } else {
+            sendEvent({ step: 'strategy' });
 
-          sendEvent({ completed: 'workers' });
+            const transcriptText = formatTranscript(rounds);
+            strategy = await generatePitchText(providerContext, {
+              mode: 'generation',
+              system: STRATEGY_SYSTEM_PROMPT,
+              maxTokens: 4000,
+              temperature: 0.6,
+              prompt: `${STRATEGY_GENERATION_PROMPT}\n\nStartup name: ${startupName}\n\n--- PITCH MEETING TRANSCRIPT ---\n${transcriptText}\n\n--- REVISED PITCH ---\n${revisedPitch}`,
+            });
 
-          // Step 3: Generate Strategy
-          sendEvent({ step: 'strategy' });
+            const { error: strategySaveError } = await db
+              .from('pitch_sessions')
+              .update({ strategy })
+              .eq('id', sessionId);
 
-          const transcriptText = formatTranscript(rounds);
+            if (strategySaveError) {
+              throw new Error(`Failed to save strategy: ${strategySaveError.message}`);
+            }
 
-          const strategyResponse = await anthropic.messages.create({
-            model: 'claude-sonnet-4-20250514',
-            system:
-              'You are a startup strategist. Write actionable strategy documents, not fluffy mission statements.',
-            max_tokens: 4000,
-            messages: [
-              {
-                role: 'user',
-                content: `${STRATEGY_GENERATION_PROMPT}\n\nStartup name: ${startupName}\n\n--- PITCH MEETING TRANSCRIPT ---\n${transcriptText}\n\n--- REVISED PITCH ---\n${revisedPitch}`,
-              },
-            ],
-          });
+            sendEvent({ completed: 'strategy' });
+          }
 
-          const strategy =
-            strategyResponse.content[0].type === 'text'
-              ? strategyResponse.content[0].text
-              : '';
-
-          // Save strategy
-          await db
-            .from('pitch_sessions')
-            .update({ strategy })
-            .eq('id', sessionId);
-
-          sendEvent({ completed: 'strategy' });
-
-          // Step 4: Generate Config Files
+          // Step 4: Generate Config Files (or resume)
           sendEvent({ step: 'configs' });
 
-          // Generate agents.json
-          const agentsJson = JSON.stringify(
-            {
-              version: '1.0',
-              agents: agentConfig.agents.map((a) => ({
-                id: a.id,
-                displayName: a.displayName,
-                role: a.role,
-                tone: a.tone,
-                systemDirective: a.systemDirective,
-                quirk: a.quirk,
-                canInitiate: a.canInitiate,
-                cooldownHours: a.cooldownHours,
-              })),
-              initialAffinities: agentConfig.initialAffinities,
-              conversationFormats: agentConfig.conversationFormats,
-              dailySchedule: agentConfig.dailySchedule,
-            },
-            null,
-            2
-          );
+          const configs =
+            persistedConfigs ??
+            buildGeneratedConfigs({
+              startupName,
+              provider,
+              agentConfig,
+              workerConfig,
+              strategy,
+            });
 
-          // Generate policies.json
-          const policiesJson = JSON.stringify(
-            {
-              version: '1.0',
-              stepKinds: workerConfig.stepKinds,
-              triggers: workerConfig.triggers,
-              policies: workerConfig.policies,
-              capGates: workerConfig.capGates,
-            },
-            null,
-            2
-          );
+          const completionUpdate = persistedConfigs
+            ? { status: 'completed' }
+            : { configs, status: 'completed' };
 
-          // Generate seed.sql
-          const seedSql = generateSeedSql(agentConfig, startupName);
-
-          // Generate .env.example
-          const envExample = generateEnvExample(workerConfig);
-
-          const configs = {
-            agents_json: agentsJson,
-            policies_json: policiesJson,
-            seed_sql: seedSql,
-            env_example: envExample,
-            strategy_md: strategy,
-          };
-
-          // Save configs and mark complete
-          await db
+          const { error: completionError } = await db
             .from('pitch_sessions')
-            .update({
-              configs,
-              status: 'completed',
-            })
+            .update(completionUpdate)
             .eq('id', sessionId);
 
-          sendEvent({ completed: 'configs' });
+          if (completionError) {
+            throw new Error(`Failed to save generated configs: ${completionError.message}`);
+          }
+
+          sendEvent({ completed: 'configs', resumed: Boolean(persistedConfigs) });
           sendEvent({ done: true });
           controller.close();
         } catch (err) {
@@ -249,39 +217,175 @@ export async function POST(
   }
 }
 
-function generateSeedSql(agentConfig: AgentConfig, startupName: string): string {
-  const agentInserts = agentConfig.agents
-    .map(
-      (a) =>
-        `INSERT INTO agents (id, display_name, role, tone, system_directive, quirk, can_initiate, cooldown_hours)
-VALUES ('${a.id}', '${escapeSQL(a.displayName)}', '${escapeSQL(a.role)}', '${escapeSQL(a.tone)}', '${escapeSQL(a.systemDirective)}', '${escapeSQL(a.quirk)}', ${a.canInitiate}, ${a.cooldownHours});`
-    )
-    .join('\n\n');
+function buildGeneratedConfigs(params: {
+  startupName: string;
+  provider: PitchProvider;
+  agentConfig: AgentConfig;
+  workerConfig: WorkerConfig;
+  strategy: string;
+}): GeneratedConfigs {
+  const { startupName, provider, agentConfig, workerConfig, strategy } = params;
 
-  const affinityInserts = agentConfig.initialAffinities
-    .map(
-      (af) =>
-        `INSERT INTO relationships (agent_a, agent_b, affinity, reason)
-VALUES ('${af.agentA}', '${af.agentB}', ${af.affinity}, '${escapeSQL(af.reason)}');`
-    )
-    .join('\n\n');
-
-  return `-- Seed data for ${startupName}
--- Generated by Hatchery
-
--- Agents
-${agentInserts}
-
--- Initial Relationships
-${affinityInserts}
-`;
+  return {
+    'agents.json': buildAgentsJson(startupName, agentConfig),
+    'policies.json': buildPoliciesJson(workerConfig),
+    'triggers.json': buildTriggersJson(workerConfig),
+    'conversations.json': buildConversationsJson(agentConfig),
+    'step-registry.json': buildStepRegistryJson(workerConfig),
+    'seed.sql': generateSeedSql(startupName, agentConfig, workerConfig),
+    '.env.example': generateEnvExample(workerConfig, provider),
+    'STRATEGY.md': strategy,
+  };
 }
 
-function generateEnvExample(workerConfig: WorkerConfig): string {
+function buildAgentsJson(startupName: string, agentConfig: AgentConfig): string {
+  return JSON.stringify(
+    {
+      version: '1.0',
+      startup: startupName,
+      agents: agentConfig.agents.map((a) => ({
+        id: a.id,
+        displayName: a.displayName,
+        role: a.role,
+        tone: a.tone,
+        systemDirective: a.systemDirective,
+        quirk: a.quirk,
+        canInitiate: a.canInitiate,
+        cooldownHours: a.cooldownHours,
+      })),
+      conversationFormats: agentConfig.conversationFormats,
+      dailySchedule: agentConfig.dailySchedule,
+    },
+    null,
+    2
+  );
+}
+
+function buildPoliciesJson(workerConfig: WorkerConfig): string {
+  return JSON.stringify(
+    {
+      version: '1.0',
+      ...workerConfig.policies,
+      cap_gates: workerConfig.capGates,
+    },
+    null,
+    2
+  );
+}
+
+function buildTriggersJson(workerConfig: WorkerConfig): string {
+  return JSON.stringify(
+    {
+      version: '1.0',
+      triggers: workerConfig.triggers,
+    },
+    null,
+    2
+  );
+}
+
+function buildConversationsJson(agentConfig: AgentConfig): string {
+  return JSON.stringify(
+    {
+      version: '1.0',
+      formats: Object.fromEntries(
+        agentConfig.conversationFormats.map((format) => [format, getDefaultFormatConfig(format)])
+      ),
+    },
+    null,
+    2
+  );
+}
+
+function buildStepRegistryJson(workerConfig: WorkerConfig): string {
+  return JSON.stringify(
+    {
+      version: '1.0',
+      steps: Object.fromEntries(
+        workerConfig.stepKinds.map((sk) => [
+          sk.kind,
+          {
+            displayName: sk.displayName,
+            workerType: sk.workerType,
+            description: sk.description,
+            requiredConfig: sk.requiredConfig,
+            capGatePolicyKey: sk.capGatePolicyKey ?? null,
+          },
+        ])
+      ),
+    },
+    null,
+    2
+  );
+}
+
+function generateSeedSql(startupName: string, agentConfig: AgentConfig, workerConfig: WorkerConfig): string {
+  const lines: string[] = [
+    `-- Seed data for ${startupName}`,
+    '-- Generated by Hatchery',
+    '',
+    '-- Policies',
+  ];
+
+  const policyMap: Record<string, unknown> = {
+    auto_approve: workerConfig.policies.auto_approve,
+    daily_quotas: workerConfig.policies.daily_quotas,
+    memory_influence: workerConfig.policies.memory_influence,
+    agent_configs: {
+      version: '1.0',
+      startup: startupName,
+      agents: agentConfig.agents,
+      conversationFormats: agentConfig.conversationFormats,
+      dailySchedule: agentConfig.dailySchedule,
+    },
+    ...Object.fromEntries(
+      Object.entries(workerConfig.capGates).map(([key, value]) => [`cap_gate_${key}`, value])
+    ),
+  };
+
+  for (const [key, value] of Object.entries(policyMap)) {
+    lines.push(
+      `INSERT INTO ops_policies (key, value, description) VALUES ('${escapeSQL(key)}', '${escapeSQL(JSON.stringify(value))}', 'Auto-generated') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;`
+    );
+  }
+
+  lines.push('', '-- Step Registry');
+  for (const sk of workerConfig.stepKinds) {
+    const requiredConfigArray = sk.requiredConfig.map((c) => `'${escapeSQL(c)}'`).join(',');
+    const capGatePolicyKey = sk.capGatePolicyKey
+      ? `'${escapeSQL(`cap_gate_${sk.capGatePolicyKey}`)}'`
+      : 'NULL';
+
+    lines.push(
+      `INSERT INTO ops_step_registry (kind, display_name, worker_type, required_config, cap_gate_policy_key) VALUES ('${escapeSQL(sk.kind)}', '${escapeSQL(sk.displayName)}', '${escapeSQL(sk.workerType)}', ARRAY[${requiredConfigArray}], ${capGatePolicyKey}) ON CONFLICT (kind) DO UPDATE SET display_name = EXCLUDED.display_name;`
+    );
+  }
+
+  lines.push('', '-- Triggers');
+  for (const trigger of workerConfig.triggers) {
+    lines.push(
+      `INSERT INTO ops_triggers (name, event_pattern, condition, proposal_template, cooldown_minutes, is_active) VALUES ('${escapeSQL(trigger.name)}', '${escapeSQL(trigger.eventPattern)}', '${escapeSQL(JSON.stringify(trigger.condition ?? {}))}', '${escapeSQL(JSON.stringify(trigger.proposalTemplate))}', ${trigger.cooldownMinutes}, ${trigger.isActive});`
+    );
+  }
+
+  lines.push('', '-- Initial Relationships');
+  for (const rel of agentConfig.initialAffinities) {
+    const [agentA, agentB] = [rel.agentA, rel.agentB].sort();
+    lines.push(
+      `INSERT INTO ops_relationships (agent_a, agent_b, affinity, total_interactions, positive_interactions, negative_interactions, drift_log) VALUES ('${escapeSQL(agentA)}', '${escapeSQL(agentB)}', ${rel.affinity}, 0, 0, 0, '[]') ON CONFLICT (agent_a, agent_b) DO UPDATE SET affinity = EXCLUDED.affinity;`
+    );
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+function generateEnvExample(workerConfig: WorkerConfig, provider: PitchProvider): string {
   const requiredVars = new Set<string>();
   requiredVars.add('SUPABASE_URL');
   requiredVars.add('SUPABASE_SERVICE_KEY');
-  requiredVars.add('ANTHROPIC_API_KEY');
+  requiredVars.add('LLM_PROVIDER');
+  requiredVars.add(provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY');
 
   for (const sk of workerConfig.stepKinds) {
     for (const v of sk.requiredConfig) {
@@ -289,9 +393,164 @@ function generateEnvExample(workerConfig: WorkerConfig): string {
     }
   }
 
-  return Array.from(requiredVars)
-    .map((v) => `${v}=`)
-    .join('\n');
+  const lines: string[] = [];
+  for (const variableName of requiredVars) {
+    if (variableName === 'LLM_PROVIDER') {
+      lines.push(`LLM_PROVIDER=${provider}`);
+      continue;
+    }
+    lines.push(`${variableName}=`);
+  }
+
+  return lines.join('\n');
+}
+
+function parseJsonObject<T>(text: string, label: string): T {
+  try {
+    return JSON.parse(extractJsonObject(text)) as T;
+  } catch {
+    throw new Error(`Failed to parse ${label}`);
+  }
+}
+
+function extractJsonObject(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/i);
+  const source = fenced ? fenced[1].trim() : text;
+
+  const start = source.indexOf('{');
+  if (start === -1) {
+    throw new Error('No JSON object found');
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < source.length; i++) {
+    const char = source[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === '{') depth++;
+    if (char === '}') depth--;
+
+    if (depth === 0) {
+      return source.slice(start, i + 1);
+    }
+  }
+
+  throw new Error('Unbalanced JSON object in model response');
+}
+
+function getDefaultFormatConfig(format: string) {
+  const defaults: Record<string, object> = {
+    standup: {
+      minParticipants: 3,
+      maxParticipants: 6,
+      minTurns: 6,
+      maxTurns: 12,
+      temperature: 0.7,
+      extractActionItems: true,
+    },
+    debate: {
+      minParticipants: 2,
+      maxParticipants: 4,
+      minTurns: 8,
+      maxTurns: 16,
+      temperature: 0.85,
+      extractActionItems: false,
+    },
+    watercooler: {
+      minParticipants: 2,
+      maxParticipants: 3,
+      minTurns: 4,
+      maxTurns: 8,
+      temperature: 0.9,
+      extractActionItems: false,
+    },
+    brainstorm: {
+      minParticipants: 3,
+      maxParticipants: 5,
+      minTurns: 10,
+      maxTurns: 20,
+      temperature: 0.85,
+      extractActionItems: true,
+    },
+    war_room: {
+      minParticipants: 3,
+      maxParticipants: 6,
+      minTurns: 8,
+      maxTurns: 15,
+      temperature: 0.6,
+      extractActionItems: true,
+    },
+    retrospective: {
+      minParticipants: 3,
+      maxParticipants: 6,
+      minTurns: 6,
+      maxTurns: 12,
+      temperature: 0.7,
+      extractActionItems: true,
+    },
+    one_on_one: {
+      minParticipants: 2,
+      maxParticipants: 2,
+      minTurns: 6,
+      maxTurns: 10,
+      temperature: 0.75,
+      extractActionItems: false,
+    },
+    celebration: {
+      minParticipants: 3,
+      maxParticipants: 6,
+      minTurns: 4,
+      maxTurns: 8,
+      temperature: 0.95,
+      extractActionItems: false,
+    },
+  };
+
+  return (
+    defaults[format] ?? {
+      minParticipants: 2,
+      maxParticipants: 4,
+      minTurns: 6,
+      maxTurns: 12,
+      temperature: 0.7,
+      extractActionItems: false,
+    }
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isAgentConfig(value: unknown): value is AgentConfig {
+  return isRecord(value) && Array.isArray(value.agents) && Array.isArray(value.initialAffinities);
+}
+
+function isWorkerConfig(value: unknown): value is WorkerConfig {
+  return isRecord(value) && Array.isArray(value.stepKinds) && Array.isArray(value.triggers);
+}
+
+function isGeneratedConfigs(value: unknown): value is GeneratedConfigs {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((item) => typeof item === 'string');
 }
 
 function escapeSQL(str: string): string {

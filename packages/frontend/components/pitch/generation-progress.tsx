@@ -29,16 +29,37 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
 
-  // Start generation if needed
+  // Start/resume generation if needed
   useEffect(() => {
-    if (session.status === 'generation' && !session.agent_config && !isGenerating) {
-      startGeneration();
-    }
-    // If already completed, mark all steps done
     if (session.status === 'completed') {
       setCompletedSteps(['agents', 'workers', 'strategy', 'configs']);
+      setCurrentStep(null);
+      return;
     }
-  }, [session.status, session.agent_config]);
+
+    if (session.status !== 'generation') {
+      return;
+    }
+
+    const completed: GenerationStep[] = [];
+    if (session.agent_config) completed.push('agents');
+    if (session.worker_config) completed.push('workers');
+    if (session.strategy) completed.push('strategy');
+    if (session.configs) completed.push('configs');
+    setCompletedSteps(completed);
+
+    if (!session.configs && !isGenerating && !error) {
+      startGeneration();
+    }
+  }, [
+    session.status,
+    session.agent_config,
+    session.worker_config,
+    session.strategy,
+    session.configs,
+    isGenerating,
+    error,
+  ]);
 
   async function startGeneration() {
     setIsGenerating(true);
@@ -50,7 +71,12 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
       });
 
       if (!res.ok) {
-        throw new Error('Failed to start generation');
+        const payload = await res.json().catch(() => null);
+        throw new Error(
+          payload?.error && typeof payload.error === 'string'
+            ? payload.error
+            : 'Failed to start generation'
+        );
       }
 
       const reader = res.body?.getReader();
@@ -69,27 +95,34 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
+            let data: Record<string, unknown>;
             try {
-              const data = JSON.parse(line.slice(6));
-
-              if (data.step) {
-                setCurrentStep(data.step);
-              }
-
-              if (data.completed) {
-                setCompletedSteps((prev) => [...prev, data.completed]);
-                setCurrentStep(null);
-              }
-
-              if (data.done) {
-                onRefresh();
-              }
-
-              if (data.error) {
-                throw new Error(data.error);
-              }
+              data = JSON.parse(line.slice(6)) as Record<string, unknown>;
             } catch {
-              // Ignore parse errors
+              continue;
+            }
+
+            if (typeof data.error === 'string' && data.error) {
+              throw new Error(data.error);
+            }
+
+            if (data.step === 'agents' || data.step === 'workers' || data.step === 'strategy' || data.step === 'configs') {
+              setCurrentStep(data.step);
+            }
+
+            const completed = data.completed;
+            if (
+              completed === 'agents' ||
+              completed === 'workers' ||
+              completed === 'strategy' ||
+              completed === 'configs'
+            ) {
+              setCompletedSteps((prev) => (prev.includes(completed) ? prev : [...prev, completed]));
+              setCurrentStep(null);
+            }
+
+            if (data.done === true) {
+              onRefresh();
             }
           }
         }
@@ -132,10 +165,10 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
           <div style={{ fontSize: 32, marginBottom: 12 }}>
             {isComplete ? '🎉' : '⚙️'}
           </div>
-          <h2 style={{ fontSize: 14, margin: '0 0 8px 0', color: '#e0e0e0' }}>
+          <h2 style={{ fontSize: 18, margin: '0 0 8px 0', color: '#e0e0e0' }}>
             {isComplete ? 'Your AI Startup is Ready!' : 'Generating Your AI Team'}
           </h2>
-          <p style={{ fontSize: 7, color: '#7a7a92', margin: 0 }}>
+          <p style={{ fontSize: 12, color: '#7a7a92', margin: 0 }}>
             {isComplete
               ? `${session.startup_name} is ready to launch.`
               : 'This may take a minute or two...'}
@@ -149,12 +182,26 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
               background: '#301010',
               border: '1px solid #5f2b2b',
               borderRadius: 6,
-              fontSize: 7,
+              fontSize: 11,
               color: '#ff8f8f',
               marginBottom: 16,
             }}
           >
             {error}
+          </div>
+        )}
+        {error && session.status === 'generation' && !isGenerating && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
+            <button
+              onClick={startGeneration}
+              style={{
+                ...downloadButtonStyle,
+                background: '#1a1a3a',
+                color: '#9aa0ff',
+              }}
+            >
+              Retry Generation
+            </button>
           </div>
         )}
 
@@ -209,7 +256,7 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
                 <div style={{ flex: 1 }}>
                   <div
                     style={{
-                      fontSize: 8,
+                      fontSize: 13,
                       color: isCompleted || isCurrent ? '#e0e0e0' : '#7a7a92',
                       marginBottom: 2,
                     }}
@@ -217,7 +264,7 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
                     {step.label}
                   </div>
                   {isCurrent && (
-                    <div style={{ fontSize: 6, color: '#7c5cff' }}>
+                    <div style={{ fontSize: 11, color: '#7c5cff' }}>
                       {step.description}
                     </div>
                   )}
@@ -252,7 +299,7 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
               marginBottom: 24,
             }}
           >
-            <h3 style={{ fontSize: 10, margin: '0 0 16px 0', color: '#e0e0e0' }}>
+            <h3 style={{ fontSize: 16, margin: '0 0 16px 0', color: '#e0e0e0' }}>
               Your Agent Team
             </h3>
             <div style={{ display: 'grid', gap: 12 }}>
@@ -277,12 +324,12 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
                     <span style={{ fontSize: 12 }}>
                       {agent.canInitiate ? '⚡' : '💭'}
                     </span>
-                    <span style={{ fontSize: 8, color: '#e0e0e0' }}>
+                    <span style={{ fontSize: 13, color: '#e0e0e0' }}>
                       {agent.displayName}
                     </span>
                     <span
                       style={{
-                        fontSize: 6,
+                        fontSize: 10,
                         color: '#7a7a92',
                         padding: '2px 6px',
                         background: '#0f0f25',
@@ -292,10 +339,10 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
                       {agent.id}
                     </span>
                   </div>
-                  <div style={{ fontSize: 7, color: '#7c5cff', marginBottom: 4 }}>
+                  <div style={{ fontSize: 12, color: '#7c5cff', marginBottom: 4 }}>
                     {agent.role}
                   </div>
-                  <div style={{ fontSize: 6, color: '#7a7a92' }}>
+                  <div style={{ fontSize: 11, color: '#7a7a92' }}>
                     {agent.tone} • &quot;{agent.quirk}&quot;
                   </div>
                 </div>
@@ -335,7 +382,7 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
 }
 
 const downloadButtonStyle: CSSProperties = {
-  fontSize: 8,
+  fontSize: 12,
   padding: '14px 28px',
   background: '#7c5cff',
   border: 'none',

@@ -10,7 +10,7 @@ export interface Round {
 export interface PitchSession {
   id: string;
   startup_name: string | null;
-  provider: string;
+  provider: 'anthropic' | 'openai';
   status: 'in_progress' | 'synthesis' | 'approval' | 'generation' | 'completed';
   current_round: number;
   rounds: Round[];
@@ -98,14 +98,8 @@ export interface WorkerConfig {
   capGates: Record<string, { limit: number; period: string }>;
 }
 
-// Generated configuration files
-export interface GeneratedConfigs {
-  agents_json: string;
-  policies_json: string;
-  seed_sql: string;
-  env_example: string;
-  strategy_md: string;
-}
+// Generated configuration files (filename -> file content)
+export type GeneratedConfigs = Record<string, string>;
 
 // Message types for chat UI
 export interface ChatMessage {

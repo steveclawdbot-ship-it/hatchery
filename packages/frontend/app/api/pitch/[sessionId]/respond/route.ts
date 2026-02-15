@@ -1,6 +1,11 @@
-import Anthropic from '@anthropic-ai/sdk';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 import { VC_SYSTEM_PROMPT, PITCH_ROUNDS, buildConversationHistory } from '@/lib/pitch/prompts';
+import {
+  getMissingProviderKeyError,
+  getPitchProviderOrDefault,
+  getProviderContext,
+  streamPitchText,
+} from '@/lib/pitch/llm';
 import type { Round } from '@/lib/pitch/types';
 
 export async function POST(
@@ -12,11 +17,6 @@ export async function POST(
 
   if (!db) {
     return Response.json({ error: 'Database not configured' }, { status: 500 });
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return Response.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 });
   }
 
   try {
@@ -42,6 +42,12 @@ export async function POST(
       return Response.json({ error: 'Session is not in progress' }, { status: 400 });
     }
 
+    const provider = getPitchProviderOrDefault(session.provider);
+    const providerContext = getProviderContext(provider);
+    if (!providerContext) {
+      return Response.json({ error: getMissingProviderKeyError(provider) }, { status: 500 });
+    }
+
     const currentRound = session.current_round;
     const rounds: Round[] = session.rounds || [];
     const roundConfig = PITCH_ROUNDS[currentRound - 1];
@@ -59,25 +65,18 @@ export async function POST(
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          const anthropic = new Anthropic({ apiKey });
           let fullResponse = '';
 
-          const streamResponse = await anthropic.messages.stream({
-            model: 'claude-sonnet-4-20250514',
+          for await (const text of streamPitchText(providerContext, {
+            mode: 'chat',
             system: systemPrompt,
-            messages: [{ role: 'user', content: history }],
-            max_tokens: 1024,
-          });
-
-          for await (const event of streamResponse) {
-            if (event.type === 'content_block_delta') {
-              const delta = event.delta as { type: string; text?: string };
-              if (delta.type === 'text_delta' && delta.text) {
-                fullResponse += delta.text;
-                const chunk = JSON.stringify({ chunk: delta.text });
-                controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
-              }
-            }
+            prompt: history,
+            maxTokens: 1024,
+            temperature: 0.8,
+          })) {
+            fullResponse += text;
+            const chunk = JSON.stringify({ chunk: text });
+            controller.enqueue(encoder.encode(`data: ${chunk}\n\n`));
           }
 
           // Save the completed round to database
@@ -92,20 +91,25 @@ export async function POST(
           const nextRound = currentRound + 1;
           const isComplete = nextRound > PITCH_ROUNDS.length;
 
-          await db
+          const { error: updateError } = await db
             .from('pitch_sessions')
             .update({
               rounds: updatedRounds,
               current_round: isComplete ? currentRound : nextRound,
+              status: isComplete ? 'synthesis' : session.status,
             })
             .eq('id', sessionId);
+
+          if (updateError) {
+            throw new Error(`Failed to persist round: ${updateError.message}`);
+          }
 
           // Send completion event
           const done = JSON.stringify({
             done: true,
             round: newRound,
             nextRound: isComplete ? null : nextRound,
-            canSynthesize: currentRound >= 4,
+            canSynthesize: isComplete || currentRound >= 4,
           });
           controller.enqueue(encoder.encode(`data: ${done}\n\n`));
           controller.close();

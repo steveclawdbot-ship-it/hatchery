@@ -170,3 +170,63 @@ Week 1 target signals:
 - [ ] Active sessions engaging with dashboard controls
 
 If these are not achieved, iterate on control clarity and mission reliability before adding new surface area.
+
+## 10. Session Notes (2026-02-09)
+
+- [x] Reviewed VC frontend integration end-to-end and patched high-priority flow issues.
+- [x] Fixed pitch round terminal behavior so final round transitions to synthesis instead of looping.
+- [x] Fixed synthesis/approval redo flow and improved SSE error propagation in pitch UI.
+- [x] Added provider-aware pitch generation routes (Anthropic + OpenAI) with provider validation.
+- [x] Made generation flow resumable after partial failures and added retry action in UI.
+- [x] Aligned generated pitch artifacts with runtime-oriented config outputs (`ops_*` seed contract and config bundle files).
+- [x] Added dashboard entrypoint link to `/pitch`.
+- [x] Confirmed local Supabase CLI auth is active and project listing works.
+- [ ] Creating a new Supabase project (`hatchery`) was blocked by org free-tier active-project quota.
+- [ ] Supabase org action needed: free one active slot (delete/upgrade) before creating a new project.
+- [x] Infra direction for current codebase: keep Hatchery on Supabase DB by default; Railway Postgres would require data-layer refactor.
+
+## 11. Production Readiness Assessment (2026-02-15)
+
+### 11.1 Current Readiness Snapshot
+
+- [ ] Overall readiness score: `~3/10` (prototype/demo quality, not production-ready)
+- [ ] Product completeness score: `~4/10` for true idea-to-active-startup flow
+- [x] `npm run build` passes across workspaces
+- [ ] `npm run lint` currently fails (`eslint` missing from workspace setup)
+- [ ] No critical-path test suite found for pitch lifecycle + runtime control loop
+
+### 11.2 Must-Fix Production Blockers (P0)
+
+- [ ] Add authentication + company/session ownership checks for all frontend API routes
+- [ ] Protect runtime control and heartbeat endpoints from unauthenticated/external triggering
+- [ ] Resolve schema/runtime mismatch around `ops_action_runs.status` inserts
+- [ ] Fix generated seed SQL to satisfy `ops_step_registry.description` requirement
+- [ ] Resolve `agent_configs` shape mismatch between generated policy and `/api/agents` consumer
+- [ ] Remove/replace broken dashboard data path (`/api/missions` is referenced without a route)
+- [ ] Ensure CLI scaffold actually emits all referenced runtime scripts (`scripts/heartbeat.js`, `scripts/worker.js`, `scripts/seed.js`)
+- [ ] Replace optimistic deploy UX in CLI with real verified deploy steps and explicit failures
+
+### 11.3 Under-Thought Product/UX Areas
+
+- [ ] No true activation path after generation (`download configs` != active startup)
+- [ ] Weak operator trust model (unclear boundaries between demo/simulated vs real execution)
+- [ ] Missing intervention workflow for automation failures (queue, assignment, and resolution loop)
+- [ ] Weak continuity from pitch outputs to runtime state (generated artifacts are not fully activated)
+- [ ] No launch readiness gate in UI with actionable pass/fail checks
+
+### 11.4 Path to Real Idea-to-Active-Startup (P0/P1 Plan)
+
+- [ ] Implement an Activation Wizard: validate keys -> apply migrations -> seed config -> create first mission -> dry run -> go live
+- [ ] Add a single backend `Activate Startup` transaction that atomically writes runtime config/state
+- [ ] Introduce idempotent run locks + background workers for heartbeat and long-running generation tasks
+- [ ] Add first-class manual intervention queue for failed publish/review/escalation events
+- [ ] Add Launch Readiness panel in dashboard (infra, auth, policies, first mission, health checks)
+- [ ] Add minimal observability: structured logs, run IDs, step latency/failure metrics, alerting thresholds
+
+### 11.5 Immediate Next 72-Hour Engineering Tasks
+
+- [ ] Install and enforce lint/test/typecheck gates in CI
+- [ ] Add auth middleware + signed cron secret for `/api/heartbeat`
+- [ ] Add pessimistic/optimistic session update guardrails for pitch state transitions
+- [ ] Backfill schema functions/policies required by engine (`get_agents_with_memory_stats`, `find_corroborated_memories`)
+- [ ] Ship one-click activation from completed pitch output to running mission
