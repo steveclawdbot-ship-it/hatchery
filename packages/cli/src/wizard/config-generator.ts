@@ -128,7 +128,7 @@ function getDefaultFormatConfig(format: string) {
   };
 }
 
-function generateSeedSQL(
+export function generateSeedSQL(
   startupName: string,
   agentConfig: AgentConfig,
   workerConfig: WorkerConfig,
@@ -151,31 +151,40 @@ function generateSeedSQL(
 
   for (const [key, value] of Object.entries(policies)) {
     lines.push(
-      `INSERT INTO ops_policies (key, value, description) VALUES ('${key}', '${JSON.stringify(value)}', 'Auto-generated') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;`,
+      `INSERT INTO ops_policies (key, value, description) VALUES ('${escapeSQL(key)}', '${escapeSQL(JSON.stringify(value))}', 'Auto-generated') ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;`,
     );
   }
 
   lines.push('', '-- Step Registry');
   for (const sk of workerConfig.stepKinds) {
+    const requiredConfigArray = sk.requiredConfig.map((c) => `'${escapeSQL(c)}'`).join(',');
+    const capGateKey = sk.capGatePolicyKey
+      ? `'${escapeSQL(`cap_gate_${sk.capGatePolicyKey}`)}'`
+      : 'NULL';
+
     lines.push(
-      `INSERT INTO ops_step_registry (kind, display_name, worker_type, required_config, cap_gate_policy_key) VALUES ('${sk.kind}', '${sk.displayName}', '${sk.workerType}', ARRAY[${sk.requiredConfig.map((c) => `'${c}'`).join(',')}], ${sk.capGatePolicyKey ? `'cap_gate_${sk.capGatePolicyKey}'` : 'NULL'}) ON CONFLICT (kind) DO UPDATE SET display_name = EXCLUDED.display_name;`,
+      `INSERT INTO ops_step_registry (kind, display_name, worker_type, description, required_config, cap_gate_policy_key) VALUES ('${escapeSQL(sk.kind)}', '${escapeSQL(sk.displayName)}', '${escapeSQL(sk.workerType)}', '${escapeSQL(sk.description)}', ARRAY[${requiredConfigArray}], ${capGateKey}) ON CONFLICT (kind) DO UPDATE SET display_name = EXCLUDED.display_name, description = EXCLUDED.description;`,
     );
   }
 
   lines.push('', '-- Triggers');
   for (const trigger of workerConfig.triggers) {
     lines.push(
-      `INSERT INTO ops_triggers (name, event_pattern, condition, proposal_template, cooldown_minutes, is_active) VALUES ('${trigger.name}', '${trigger.eventPattern}', '${JSON.stringify(trigger.condition ?? {})}', '${JSON.stringify(trigger.proposalTemplate)}', ${trigger.cooldownMinutes}, ${trigger.isActive});`,
+      `INSERT INTO ops_triggers (name, event_pattern, condition, proposal_template, cooldown_minutes, is_active) VALUES ('${escapeSQL(trigger.name)}', '${escapeSQL(trigger.eventPattern)}', '${escapeSQL(JSON.stringify(trigger.condition ?? {}))}', '${escapeSQL(JSON.stringify(trigger.proposalTemplate))}', ${trigger.cooldownMinutes}, ${trigger.isActive});`,
     );
   }
 
   lines.push('', '-- Initial Relationships');
   for (const rel of agentConfig.initialAffinities) {
     lines.push(
-      `INSERT INTO ops_relationships (agent_a, agent_b, affinity, total_interactions, positive_interactions, negative_interactions, drift_log) VALUES ('${rel.agentA}', '${rel.agentB}', ${rel.affinity}, 0, 0, 0, '[]') ON CONFLICT (agent_a, agent_b) DO UPDATE SET affinity = EXCLUDED.affinity;`,
+      `INSERT INTO ops_relationships (agent_a, agent_b, affinity, total_interactions, positive_interactions, negative_interactions, drift_log) VALUES ('${escapeSQL(rel.agentA)}', '${escapeSQL(rel.agentB)}', ${rel.affinity}, 0, 0, 0, '[]') ON CONFLICT (agent_a, agent_b) DO UPDATE SET affinity = EXCLUDED.affinity;`,
     );
   }
 
   lines.push('');
   return lines.join('\n');
+}
+
+function escapeSQL(str: string): string {
+  return str.replace(/'/g, "''");
 }
