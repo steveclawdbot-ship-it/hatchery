@@ -4,6 +4,9 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Hatchery Dashboard',
   description: 'AI Startup in a Box — real-time dashboard',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

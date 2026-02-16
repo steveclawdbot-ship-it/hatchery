@@ -11,7 +11,12 @@ type CompletionMode = 'chat' | 'synthesis' | 'generation';
 
 const DEFAULT_PROVIDER: PitchProvider = 'anthropic';
 const ANTHROPIC_API_VERSION = '2023-06-01';
+const GOOGLE_GENERATE_CONTENT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GOOGLE_MIN_OUTPUT_TOKENS = 1024;
+const GOOGLE_MAX_CONTINUATION_ATTEMPTS = 2;
 const OPENAI_DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+const KIMI_CODING_DEFAULT_BASE_URL = 'https://api.kimi.com/coding/v1';
+const KIMI_CODING_DEFAULT_USER_AGENT = 'RooCode/3.23.4';
 const MAX_MODEL_ID_LENGTH = 160;
 
 const MODELS: Record<PitchProvider, { chat: string; synthesis: string; generation: string }> = {
@@ -31,9 +36,9 @@ const MODELS: Record<PitchProvider, { chat: string; synthesis: string; generatio
     generation: 'gemini-2.5-pro',
   },
   kimi: {
-    chat: 'moonshot-v1-128k',
-    synthesis: 'moonshot-v1-128k',
-    generation: 'moonshot-v1-128k',
+    chat: 'kimi-for-coding',
+    synthesis: 'kimi-for-coding',
+    generation: 'kimi-for-coding',
   },
   zai: {
     chat: 'glm-4.5',
@@ -59,9 +64,7 @@ const FALLBACK_MODEL_OPTIONS: Record<PitchProvider, PitchModelOption[]> = {
     { id: 'gemini-2.0-flash', displayName: 'Gemini 2.0 Flash' },
   ],
   kimi: [
-    { id: 'moonshot-v1-128k', displayName: 'Moonshot v1 128K' },
-    { id: 'moonshot-v1-32k', displayName: 'Moonshot v1 32K' },
-    { id: 'moonshot-v1-8k', displayName: 'Moonshot v1 8K' },
+    { id: 'kimi-for-coding', displayName: 'Kimi For Coding' },
   ],
   zai: [
     { id: 'glm-4.5', displayName: 'GLM-4.5' },
@@ -82,6 +85,7 @@ interface ProviderContext {
   provider: PitchProvider;
   apiKey: string;
   baseURL?: string;
+  headers?: Record<string, string>;
 }
 
 interface CompletionRequest {
@@ -91,6 +95,16 @@ interface CompletionRequest {
   prompt: string;
   maxTokens: number;
   temperature?: number;
+}
+
+interface GoogleCandidate {
+  content?: { parts?: Array<{ text?: string }> };
+  finishReason?: string;
+}
+
+interface GoogleGenerateContentResponse {
+  candidates?: GoogleCandidate[];
+  promptFeedback?: { blockReason?: string };
 }
 
 export function normalizePitchProvider(value: unknown): PitchProvider | null {
@@ -135,10 +149,23 @@ export function getProviderContext(provider: PitchProvider): ProviderContext | n
   if (!apiKey) return null;
 
   const kimiBaseURL = process.env.KIMI_BASE_URL ?? process.env.KIMI_API_BASE_URL;
+  const kimiUserAgent = process.env.KIMI_USER_AGENT ?? process.env.KIMI_CODING_USER_AGENT;
   const zaiBaseURL = process.env.ZAI_BASE_URL ?? process.env.ZAI_API_BASE_URL;
 
   if (provider === 'kimi') {
-    return { provider, apiKey, baseURL: kimiBaseURL || 'https://api.moonshot.cn/v1' };
+    const baseURL = kimiBaseURL || KIMI_CODING_DEFAULT_BASE_URL;
+    const headers: Record<string, string> = {};
+
+    if (baseURL.includes('api.kimi.com/coding')) {
+      headers['User-Agent'] = kimiUserAgent?.trim() || KIMI_CODING_DEFAULT_USER_AGENT;
+    }
+
+    return {
+      provider,
+      apiKey,
+      baseURL,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+    };
   }
 
   if (provider === 'zai') {
@@ -167,9 +194,13 @@ function resolveModel(provider: PitchProvider, request: CompletionRequest): stri
 
 function createOpenAIClient(context: ProviderContext): OpenAI {
   if (context.baseURL) {
-    return new OpenAI({ apiKey: context.apiKey, baseURL: context.baseURL });
+    return new OpenAI({
+      apiKey: context.apiKey,
+      baseURL: context.baseURL,
+      defaultHeaders: context.headers,
+    });
   }
-  return new OpenAI({ apiKey: context.apiKey });
+  return new OpenAI({ apiKey: context.apiKey, defaultHeaders: context.headers });
 }
 
 async function generateGoogleText(
@@ -177,37 +208,72 @@ async function generateGoogleText(
   model: string,
   request: CompletionRequest
 ): Promise<string> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const url = `${GOOGLE_GENERATE_CONTENT_BASE_URL}/${model}:generateContent?key=${apiKey}`;
+  const maxOutputTokens = Math.max(GOOGLE_MIN_OUTPUT_TOKENS, Math.max(1, request.maxTokens));
+  let prompt = request.prompt;
+  let fullText = '';
 
-  const body: Record<string, unknown> = {
-    contents: [{ parts: [{ text: request.prompt }] }],
-    generationConfig: {
-      temperature: request.temperature,
-      maxOutputTokens: request.maxTokens,
-    },
-  };
+  for (let attempt = 0; attempt < GOOGLE_MAX_CONTINUATION_ATTEMPTS; attempt++) {
+    const body: Record<string, unknown> = {
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: request.temperature,
+        maxOutputTokens,
+      },
+    };
 
-  if (request.system) {
-    body.systemInstruction = { parts: [{ text: request.system }] };
+    if (request.system) {
+      body.systemInstruction = { parts: [{ text: request.system }] };
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google API error: ${response.status} ${await response.text()}`);
+    }
+
+    const data = await response.json() as GoogleGenerateContentResponse;
+    const candidate = data.candidates?.[0];
+    const chunk = candidate?.content?.parts
+      ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
+      .join('') ?? '';
+    if (chunk) {
+      fullText += chunk;
+    }
+
+    const finishReason = typeof candidate?.finishReason === 'string' ? candidate.finishReason : '';
+    if (finishReason !== 'MAX_TOKENS') {
+      if (fullText) {
+        return fullText;
+      }
+
+      const blockReason =
+        typeof data.promptFeedback?.blockReason === 'string' ? data.promptFeedback.blockReason : '';
+      if (blockReason) {
+        throw new Error(`Google response blocked: ${blockReason}`);
+      }
+      return '';
+    }
+
+    if (!chunk.trim()) {
+      break;
+    }
+
+    prompt = [
+      'Continue your previous response from exactly where it ended.',
+      'Return only the continuation and do not repeat prior text.',
+      '',
+      `Original user prompt:\n${request.prompt}`,
+      '',
+      `Text already produced:\n${fullText}`,
+    ].join('\n');
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Google API error: ${response.status} ${await response.text()}`);
-  }
-
-  const data = await response.json() as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-
-  return data.candidates?.[0]?.content?.parts
-    ?.map((part) => (typeof part.text === 'string' ? part.text : ''))
-    .join('') ?? '';
+  return fullText;
 }
 
 async function listAnthropicModels(apiKey: string): Promise<PitchModelOption[]> {
@@ -296,6 +362,7 @@ async function listOpenAICompatibleModels(context: ProviderContext): Promise<Pit
     method: 'GET',
     headers: {
       Authorization: `Bearer ${context.apiKey}`,
+      ...(context.headers ?? {}),
     },
     cache: 'no-store',
   });

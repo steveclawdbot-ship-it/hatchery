@@ -49,7 +49,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           fontFamily: 'var(--hatch-font-body)',
           color: 'var(--hatch-text-muted)',
         }}>
-          {isVC ? 'VC Partner' : 'You'}
+          {isVC ? 'Strategy Guide' : 'You'}
         </span>
         {message.focus && isVC && (
           <span

@@ -23,6 +23,21 @@ Key risks:
 2. [risk] → [mitigation]
 3. [risk] → [mitigation]
 
+Verifiable 30-day goals:
+1. [goal with metric + target + date]
+2. [goal with metric + target + date]
+3. [goal with metric + target + date]
+
+Initial mission queue:
+1. [mission name] - owner: [agent/person] - done when: [verifiable condition]
+2. [mission name] - owner: [agent/person] - done when: [verifiable condition]
+3. [mission name] - owner: [agent/person] - done when: [verifiable condition]
+
+Priority task backlog:
+- [task] - supports mission: [name] - dependency: [if any] - acceptance: [testable outcome]
+- [task] - supports mission: [name] - dependency: [if any] - acceptance: [testable outcome]
+- [task] - supports mission: [name] - dependency: [if any] - acceptance: [testable outcome]
+
 30-day validation plan:
 1. [action]
 2. [action]

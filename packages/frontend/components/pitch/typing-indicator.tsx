@@ -33,7 +33,7 @@ export default function TypingIndicator() {
         color: 'var(--hatch-text-muted)',
         marginLeft: 10,
       }}>
-        VC is thinking...
+        Strategy guide is thinking...
       </span>
     </div>
   );

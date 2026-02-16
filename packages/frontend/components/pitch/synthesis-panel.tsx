@@ -148,7 +148,7 @@ export default function SynthesisPanel({ session, onApprove, onRefresh }: Synthe
           </h2>
           <p style={{ fontSize: 12, color: '#7a7a92', margin: 0 }}>
             {isSynthesizing
-              ? 'The VC is distilling your pitch meeting into a refined brief.'
+              ? 'Your strategy guide is distilling the session into an executable brief.'
               : 'Review and approve or edit the synthesized pitch.'}
           </p>
         </div>

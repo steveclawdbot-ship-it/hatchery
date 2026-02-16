@@ -226,7 +226,7 @@ export default function PitchLanding() {
           <p style={{ fontSize: 14, color: '#7a7a92', lineHeight: 1.6 }}>
             Pitch your startup to a startup incubator.
             <br />
-            Get challenged. Get refined. Get generated.
+            Tell the story. Extract the plan. Launch the agents.
           </p>
         </div>
 

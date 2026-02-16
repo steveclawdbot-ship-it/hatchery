@@ -25,6 +25,25 @@ export class AnthropicProvider implements LLMProvider {
     return block.text;
   }
 
+  async *generateStream(prompt: string, opts: GenerateOptions): AsyncGenerator<string> {
+    const model = getModelForTier('anthropic', opts.tier);
+    const stream = await this.client.messages.stream({
+      model,
+      max_tokens: opts.maxTokens ?? 4096,
+      temperature: opts.temperature ?? 0.7,
+      system: opts.system ?? '',
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    for await (const event of stream) {
+      if (event.type !== 'content_block_delta') continue;
+      const delta = event.delta as { type: string; text?: string };
+      if (delta.type === 'text_delta' && delta.text) {
+        yield delta.text;
+      }
+    }
+  }
+
   async generateJSON<T>(prompt: string, schema: ZodSchema<T>, opts: GenerateOptions): Promise<T> {
     const jsonPrompt = `${prompt}\n\nRespond ONLY with valid JSON. No explanation, no markdown fences.`;
     const raw = await this.generate(jsonPrompt, opts);

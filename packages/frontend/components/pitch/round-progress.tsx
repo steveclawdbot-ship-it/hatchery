@@ -9,7 +9,9 @@ interface RoundProgressProps {
 
 export default function RoundProgress({ currentRound, status }: RoundProgressProps) {
   const totalRounds = PITCH_ROUNDS.length;
-  const currentFocus = PITCH_ROUNDS[currentRound - 1]?.focus || '';
+  const isClarifying = status === 'in_progress' && currentRound >= totalRounds;
+  const focusIndex = Math.min(currentRound, totalRounds) - 1;
+  const currentFocus = PITCH_ROUNDS[focusIndex]?.focus || '';
 
   // For synthesis/approval/generation/completed, show all rounds complete
   const displayRound = status === 'in_progress' ? currentRound : totalRounds;
@@ -28,7 +30,11 @@ export default function RoundProgress({ currentRound, status }: RoundProgressPro
       {/* Round indicator */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ fontSize: 13, color: '#7a7a92' }}>
-          {status === 'in_progress' ? `Round ${currentRound}/${totalRounds}` : getStatusLabel(status)}
+          {status === 'in_progress'
+            ? isClarifying
+              ? `Round ${totalRounds}+ (clarifying)`
+              : `Round ${currentRound}/${totalRounds}`
+            : getStatusLabel(status)}
         </span>
 
         {/* Progress dots */}

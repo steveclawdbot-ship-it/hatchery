@@ -34,7 +34,8 @@ Rules:
 - At least one tension pair (agents who disagree productively)
 - At least one agent with canInitiate: false (they only react)
 - IDs must be simple snake_case (no hyphens)
-- Affinities range 0.30-0.85 (no perfect harmony)`;
+- Affinities range 0.30-0.85 (no perfect harmony)
+- Agent roles and directives must map to the mission queue and verifiable 30-day goals in the revised pitch`;
 
 export const WORKER_GENERATION_PROMPT = `Based on the revised pitch and agent team below, generate the operational work configuration.
 
@@ -80,7 +81,8 @@ Rules:
 - Every business needs at least: content creation, analysis, and communication step kinds
 - Triggers should create a closed loop (output of one step can trigger another)
 - Be conservative with auto_approve (only low-risk actions)
-- Cap gates prevent runaway spending`;
+- Cap gates prevent runaway spending
+- Step kinds, triggers, and proposal templates must map to the mission queue and task backlog from the revised pitch`;
 
 export const STRATEGY_GENERATION_PROMPT = `Based on the full pitch meeting transcript and the revised pitch, generate a comprehensive STRATEGY.md document.
 

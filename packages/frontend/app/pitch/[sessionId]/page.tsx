@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PitchSession, ChatMessage } from '@/lib/pitch/types';
 import { PITCH_ROUNDS } from '@/lib/pitch/prompts';
+import { assessBuildReadiness } from '@/lib/pitch/readiness';
 import ChatWindow from '@/components/pitch/chat-window';
 import InputArea from '@/components/pitch/input-area';
 import RoundProgress from '@/components/pitch/round-progress';
@@ -45,7 +46,7 @@ export default function PitchSessionPage({
       const data: PitchSession = await res.json();
       setError('');
       setSession(data);
-      setCanSynthesize(data.current_round > 4 || data.rounds.length >= 4);
+      setCanSynthesize(assessBuildReadiness(data.rounds).ready);
 
       // Convert rounds to chat messages
       const chatMessages: ChatMessage[] = [];
@@ -103,7 +104,7 @@ export default function PitchSessionPage({
       role: 'vc',
       content: '',
       round: session.current_round,
-      focus: PITCH_ROUNDS[session.current_round - 1]?.focus,
+      focus: PITCH_ROUNDS[Math.min(session.current_round, PITCH_ROUNDS.length) - 1]?.focus,
       timestamp: new Date().toISOString(),
       isStreaming: true,
     };
@@ -169,9 +170,7 @@ export default function PitchSessionPage({
               );
 
               // Update session state
-              if (data.canSynthesize === true) {
-                setCanSynthesize(true);
-              }
+              setCanSynthesize(data.canSynthesize === true);
               const nextRound = data.nextRound;
               if (typeof nextRound === 'number' && Number.isFinite(nextRound)) {
                 setSession((prev) => (prev ? { ...prev, current_round: nextRound } : prev));

@@ -7,32 +7,32 @@ export interface RoundConfig {
 export const PITCH_ROUNDS: RoundConfig[] = [
   {
     round: 1,
-    focus: 'Initial Pitch',
-    systemAddendum: `This is round 1. The founder is about to pitch their idea for the first time. Listen carefully, then identify the 2-3 most critical weaknesses. Focus on: Who's the customer? Why would they pay? What's the unfair advantage? Ask ONE hard question.`,
+    focus: 'Story Premise & User Outcome',
+    systemAddendum: `This is round 1. Establish the narrative and operating context. Capture: primary user persona, triggering pain event, desired outcome, and key constraints. Ask one question that converts a vague idea into a concrete user-outcome statement.`,
   },
   {
     round: 2,
-    focus: 'Market & Competition',
-    systemAddendum: `This is round 2. Challenge the market assumptions. Who are the competitors? What's really different here? How big is the addressable market, realistically? If the founder claimed X, push back with real-world examples of why that's harder than it sounds.`,
+    focus: 'Evidence & Baseline',
+    systemAddendum: `This is round 2. Ground the story in evidence. Capture current alternatives, baseline metrics (time, cost, quality, or error), and why users would switch. Ask one question that yields a measurable baseline or proof source.`,
   },
   {
     round: 3,
-    focus: 'Execution & Monetization',
-    systemAddendum: `This is round 3. Stress-test the business model. How do they make money in month 1 vs month 12? What's the cheapest way to validate before building everything? What's the unit economics look like?`,
+    focus: 'Verifiable Goals & Missions',
+    systemAddendum: `This is round 3. Define execution targets. Capture 2-4 measurable 30-day goals, then draft the first 3 missions with clear definition-of-done and success thresholds. Ask one question that clarifies a missing metric, owner, or deadline.`,
   },
   {
     round: 4,
-    focus: 'Agent Architecture Challenge',
-    systemAddendum: `This is round 4. Now think about this as an AI-agent company. Propose a preliminary agent team (3-6 agents), then immediately challenge your own proposal. Do they really need a dedicated X agent? What happens when agent Y fails? How do agents avoid doing duplicate work?`,
+    focus: 'Agent Team & Handoffs',
+    systemAddendum: `This is round 4. Design a lean agent team (3-6 agents) around mission ownership. Clarify responsibilities, handoff rules, escalation paths, and one failure-recovery protocol. Ask one question that removes role overlap or handoff ambiguity.`,
   },
   {
     round: 5,
-    focus: 'Refinement I',
-    systemAddendum: `This is round 5. Dive deeper into the weakest area identified so far. If the business model is shaky, drill there. If the agent architecture has gaps, probe those. You may suggest a pivot: "Based on everything you've said, the real opportunity might be Z, not X."`,
+    focus: 'Mission Backlog & Task Graph',
+    systemAddendum: `This is round 5. Convert missions into executable work. Define high-priority tasks, dependencies, trigger events, and acceptance criteria so agents can act autonomously. Ask one question that unlocks backlog prioritization or sequencing.`,
   },
   {
     round: 6,
-    focus: 'Final Challenge',
-    systemAddendum: `This is round 6 (final). Give the founder one last hard truth. What's the single biggest risk? Then pivot to constructive: what's the ONE thing they should do in the first 30 days to prove this works? End by saying you're ready to synthesize.`,
+    focus: 'Execution Contract',
+    systemAddendum: `This is round 6 (final). Finalize an execution contract: first-week plan, KPI cadence, and single biggest unresolved risk with mitigation owner. Ask one question that secures a concrete commitment. End by saying you're ready to synthesize.`,
   },
 ];

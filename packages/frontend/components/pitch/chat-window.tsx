@@ -46,7 +46,7 @@ export default function ChatWindow({ messages, isLoading = false }: ChatWindowPr
             <div style={{ fontSize: 13, lineHeight: 1.6 }}>
               Start by pitching your AI startup idea.
               <br />
-              The VC will challenge you — that&apos;s the point.
+              Your VC-style guide will turn the story into executable goals, missions, and tasks.
             </div>
           </div>
         )}

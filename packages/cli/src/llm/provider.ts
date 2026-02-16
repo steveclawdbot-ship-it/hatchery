@@ -12,6 +12,7 @@ export interface GenerateOptions {
 export interface LLMProvider {
   name: string;
   generate(prompt: string, opts: GenerateOptions): Promise<string>;
+  generateStream?(prompt: string, opts: GenerateOptions): AsyncGenerator<string>;
   generateJSON<T>(prompt: string, schema: ZodSchema<T>, opts: GenerateOptions): Promise<T>;
 }
 

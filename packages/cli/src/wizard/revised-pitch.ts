@@ -24,7 +24,7 @@ function formatTranscript(transcript: PitchTranscript): string {
   return transcript.rounds
     .map(
       (r) =>
-        `--- Round ${r.round}: ${r.focus} ---\nFounder: ${r.founderInput}\nVC: ${r.vcResponse}`,
+        `--- Round ${r.round}: ${r.focus} ---\nFounder: ${r.founderInput}\nGuide: ${r.vcResponse}`,
     )
     .join('\n\n');
 }
