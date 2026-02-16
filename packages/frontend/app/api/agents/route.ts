@@ -7,6 +7,14 @@ interface AgentConfig {
   role: string;
 }
 
+interface AgentConfigsPolicyObject {
+  version?: string;
+  startup?: string;
+  agents?: AgentConfig[];
+  conversationFormats?: string[];
+  dailySchedule?: unknown[];
+}
+
 const DESK_POSITIONS = [
   { x: 120, y: 100 },
   { x: 300, y: 100 },
@@ -33,7 +41,10 @@ export async function GET() {
     return NextResponse.json({ error: 'No agent configs found' }, { status: 404 });
   }
 
-  const agentConfigs: AgentConfig[] = policyRow.value;
+  const agentConfigs = parseAgentConfigsPolicy(policyRow.value);
+  if (!agentConfigs) {
+    return NextResponse.json({ error: 'Invalid agent configs policy shape' }, { status: 500 });
+  }
 
   // Get recent events to derive agent states
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
@@ -71,4 +82,25 @@ export async function GET() {
   });
 
   return NextResponse.json(agents);
+}
+
+function parseAgentConfigsPolicy(value: unknown): AgentConfig[] | null {
+  // Legacy shape support: policy value is a direct array of agents.
+  if (Array.isArray(value)) {
+    return value as AgentConfig[];
+  }
+
+  // Canonical shape support: { version, startup, agents, ... }.
+  if (isRecord(value)) {
+    const obj = value as AgentConfigsPolicyObject;
+    if (Array.isArray(obj.agents)) {
+      return obj.agents;
+    }
+  }
+
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }

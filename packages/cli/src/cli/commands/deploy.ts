@@ -15,12 +15,15 @@ export async function deployCommand(
     case 'api':
       console.log(chalk.yellow('  API deployment not yet implemented.'));
       console.log(chalk.dim('  For now, deploy the Next.js frontend manually.'));
-      break;
+      process.exitCode = 1;
+      return;
     case 'workers':
       return deployWorkers();
     default:
       console.log(chalk.red(`  Unknown deploy target: ${target}`));
       console.log(chalk.dim('  Valid targets: db, api, workers'));
+      process.exitCode = 1;
+      return;
   }
 }
 
@@ -48,6 +51,7 @@ async function deployDatabase(options: { supabaseUrl?: string; supabaseKey?: str
   console.log('');
 
   // Use Supabase's REST API to execute SQL
+  let hadFailures = false;
   for (const file of files) {
     const sql = readFileSync(join(migDir, file), 'utf-8');
     console.log(chalk.dim(`  Running ${file}...`));
@@ -78,6 +82,7 @@ async function deployDatabase(options: { supabaseUrl?: string; supabaseKey?: str
       if (!sqlResponse.ok) {
         console.log(chalk.yellow(`  ⚠ ${file} — may need manual execution`));
         console.log(chalk.dim('    Copy the SQL to your Supabase SQL editor'));
+        hadFailures = true;
         continue;
       }
     }
@@ -88,18 +93,24 @@ async function deployDatabase(options: { supabaseUrl?: string; supabaseKey?: str
   // Run seed if it exists
   const seedFile = resolve('.', 'config', 'seed.sql');
   if (existsSync(seedFile)) {
-    console.log(chalk.dim('  Running seed.sql...'));
-    console.log(chalk.green('  ✓ seed.sql'));
+    console.log(chalk.yellow('  seed.sql detected but not executed by this command.'));
+    console.log(chalk.dim('  Run it manually in Supabase SQL editor or via your migration workflow.'));
   }
 
   console.log('');
+  if (hadFailures) {
+    console.log(chalk.bold.yellow('  Database deploy finished with warnings. Manual SQL execution required.'));
+    process.exitCode = 1;
+    return;
+  }
   console.log(chalk.bold.green('  Database deployed.'));
 }
 
 async function deployWorkers() {
   console.log(chalk.bold.cyan('  Worker Deployment'));
   console.log('');
-  console.log(chalk.dim('  Copy systemd templates to /etc/systemd/system/:'));
+  console.log(chalk.yellow('  Automated worker deployment is not implemented yet.'));
+  console.log(chalk.dim('  Manual setup required. Copy systemd templates to /etc/systemd/system/:'));
   console.log('');
 
   const serviceDir = resolve('.', 'systemd');
@@ -117,4 +128,5 @@ async function deployWorkers() {
   console.log(chalk.white('    sudo systemctl daemon-reload'));
   console.log(chalk.white('    sudo systemctl enable --now <service-name>'));
   console.log('');
+  process.exitCode = 1;
 }

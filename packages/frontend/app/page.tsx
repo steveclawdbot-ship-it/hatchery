@@ -7,8 +7,9 @@ import ControlPanel from '@/components/dashboard/control-panel';
 import PixelOffice from '@/components/office/pixel-office';
 import RelationshipGraph from '@/components/dashboard/relationship-graph';
 import MemoryBrowser from '@/components/dashboard/memory-browser';
+import InterventionQueue from '@/components/dashboard/intervention-queue';
 
-type Tab = 'control' | 'feed' | 'office' | 'graph' | 'memory';
+type Tab = 'control' | 'feed' | 'interventions' | 'office' | 'graph' | 'memory';
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('control');
@@ -16,6 +17,7 @@ export default function Dashboard() {
   const tabs: Array<{ id: Tab; label: string; enabled: boolean }> = [
     { id: 'control', label: 'Control Panel', enabled: true },
     { id: 'feed', label: 'Mission Feed', enabled: true },
+    { id: 'interventions', label: 'Interventions', enabled: true },
     { id: 'office', label: 'Pixel Office', enabled: true },
     { id: 'graph', label: 'Relationship Graph', enabled: true },
     { id: 'memory', label: 'Memory Browser', enabled: true },
@@ -90,6 +92,7 @@ export default function Dashboard() {
       <main style={{ padding: 24 }}>
         {activeTab === 'control' && <ControlPanel />}
         {activeTab === 'feed' && <SignalFeed />}
+        {activeTab === 'interventions' && <InterventionQueue />}
         {activeTab === 'office' && <PixelOffice />}
         {activeTab === 'graph' && <RelationshipGraph />}
         {activeTab === 'memory' && <MemoryBrowser />}

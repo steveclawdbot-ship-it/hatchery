@@ -24,7 +24,7 @@ export class ProposalService {
 
     // Check cap gates for each step kind
     for (const step of input.steps) {
-      const gateOk = await this.checkCapGate(step.kind, input.agentId);
+      const gateOk = await this.checkCapGate(step.kind);
       if (!gateOk.ok) {
         throw new Error(`Cap gate blocked for ${step.kind}: ${gateOk.reason}`);
       }
@@ -116,10 +116,7 @@ export class ProposalService {
     return stepKinds.every((k) => allowed.includes(k));
   }
 
-  private async checkCapGate(
-    stepKind: string,
-    _agentId: string,
-  ): Promise<{ ok: boolean; reason?: string }> {
+  private async checkCapGate(stepKind: string): Promise<{ ok: boolean; reason?: string }> {
     // Look up cap gate policy key from step registry
     const { data: reg } = await this.db
       .from('ops_step_registry')

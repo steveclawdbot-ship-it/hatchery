@@ -6,7 +6,18 @@ import { createSupabaseAdminClient } from '@/lib/supabase-admin';
  * Cron endpoint for Vercel deployment.
  * Triggers the heartbeat cycle.
  */
-export async function GET() {
+export async function GET(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'CRON_SECRET is not configured' }, { status: 500 });
+  }
+
+  const authHeader = request.headers.get('authorization');
+  const expected = `Bearer ${cronSecret}`;
+  if (authHeader !== expected) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const db = createSupabaseAdminClient();
   if (!db) {
     return NextResponse.json({ error: 'Missing Supabase config' }, { status: 500 });

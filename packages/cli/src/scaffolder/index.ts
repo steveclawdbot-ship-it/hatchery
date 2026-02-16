@@ -91,6 +91,10 @@ export function scaffoldProject(
   writeFileSync(join(projectDir, 'package.json'), JSON.stringify(pkgJson, null, 2) + '\n', 'utf-8');
   console.log(chalk.dim('  ✓ package.json'));
 
+  // Write runtime scripts referenced by package.json.
+  writeRuntimeScripts(projectDir);
+  console.log(chalk.dim('  ✓ scripts/heartbeat.js, scripts/worker.js, scripts/seed.js'));
+
   // Write docker-compose.yml
   const dockerCompose = renderTemplate(DOCKER_COMPOSE_TEMPLATE, {
     name: options.name,
@@ -230,6 +234,12 @@ function writeMigrations(projectDir: string) {
   writeFileSync(join(migDir, '006_functions.sql'), MIGRATION_006, 'utf-8');
 }
 
+function writeRuntimeScripts(projectDir: string) {
+  writeFileSync(join(projectDir, 'scripts', 'heartbeat.js'), HEARTBEAT_SCRIPT, 'utf-8');
+  writeFileSync(join(projectDir, 'scripts', 'worker.js'), WORKER_SCRIPT, 'utf-8');
+  writeFileSync(join(projectDir, 'scripts', 'seed.js'), SEED_SCRIPT, 'utf-8');
+}
+
 // ─── Templates ───────────────────────────────────────────────
 
 const DOCKER_COMPOSE_TEMPLATE = `version: '3.8'
@@ -276,6 +286,68 @@ export async function execute(step: Step, context: WorkerContext): Promise<StepR
     },
   };
 }
+`;
+
+const HEARTBEAT_SCRIPT = `#!/usr/bin/env node
+import 'dotenv/config';
+import { createDBClient, Heartbeat } from '@hatchery/engine';
+
+const url = process.env.SUPABASE_URL;
+const key = process.env.SUPABASE_SERVICE_KEY;
+
+if (!url || !key) {
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
+  process.exit(1);
+}
+
+// Placeholder generator keeps runtime script callable until provider wiring is completed.
+async function llmGenerate() {
+  return 'LLM placeholder: configure a provider before production use.';
+}
+
+const db = createDBClient(url, key);
+const heartbeat = new Heartbeat({ db, llmGenerate });
+
+heartbeat.tick()
+  .then((result) => {
+    console.log('Heartbeat completed:', result);
+  })
+  .catch((err) => {
+    console.error('Heartbeat failed:', err);
+    process.exitCode = 1;
+  });
+`;
+
+const WORKER_SCRIPT = `#!/usr/bin/env node
+import 'dotenv/config';
+
+const kind = process.argv[2];
+if (!kind) {
+  console.error('Usage: node scripts/worker.js <step-kind>');
+  process.exit(1);
+}
+
+console.error('Worker runtime bootstrap is scaffolded but not fully generated.');
+console.error('Implement worker loading/execution for step kind:', kind);
+process.exitCode = 1;
+`;
+
+const SEED_SCRIPT = `#!/usr/bin/env node
+import 'dotenv/config';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const seedPath = resolve(process.cwd(), 'config', 'seed.sql');
+if (!existsSync(seedPath)) {
+  console.error('Missing seed.sql at config/seed.sql');
+  process.exit(1);
+}
+
+const sql = readFileSync(seedPath, 'utf-8');
+console.log('seed.sql loaded.');
+console.log('Execute this SQL manually in Supabase SQL editor or your migration pipeline.');
+console.log('---');
+console.log(sql.slice(0, 500) + (sql.length > 500 ? '\\n... (truncated)' : ''));
 `;
 
 // ─── SQL Migrations ───────────────────────────────────────────
@@ -447,6 +519,7 @@ CREATE TABLE IF NOT EXISTS ops_step_registry (
   kind TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
   worker_type TEXT NOT NULL,
+  description TEXT NOT NULL,
   required_config TEXT[] DEFAULT '{}',
   cap_gate_policy_key TEXT REFERENCES ops_policies(key),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

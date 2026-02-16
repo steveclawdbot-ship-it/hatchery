@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import type { PitchSession, Agent } from '@/lib/pitch/types';
+import { getLaunchReadiness } from '@/lib/pitch/activation';
 
 interface GenerationProgressProps {
   session: PitchSession;
@@ -9,11 +10,25 @@ interface GenerationProgressProps {
 }
 
 type GenerationStep = 'agents' | 'workers' | 'strategy' | 'configs';
+type ActivationState = 'idle' | 'activating' | 'confirm_replace' | 'success' | 'error';
 
 interface StepConfig {
   id: GenerationStep;
   label: string;
   description: string;
+}
+
+interface ActivationAutoRunPayload {
+  attempted?: boolean;
+  succeeded?: boolean;
+  error?: string | null;
+  result?: {
+    skipped?: boolean;
+    reason?: string;
+    stepsExecuted?: number;
+    stepsFailed?: number;
+    stepsRecovered?: number;
+  } | null;
 }
 
 const GENERATION_STEPS: StepConfig[] = [
@@ -28,40 +43,14 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
   const [completedSteps, setCompletedSteps] = useState<GenerationStep[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [activationState, setActivationState] = useState<ActivationState>('idle');
+  const [activationMessage, setActivationMessage] = useState('');
+  const [activationMissionId, setActivationMissionId] = useState<string | null>(null);
+
+  const readiness = getLaunchReadiness(session);
 
   // Start/resume generation if needed
-  useEffect(() => {
-    if (session.status === 'completed') {
-      setCompletedSteps(['agents', 'workers', 'strategy', 'configs']);
-      setCurrentStep(null);
-      return;
-    }
-
-    if (session.status !== 'generation') {
-      return;
-    }
-
-    const completed: GenerationStep[] = [];
-    if (session.agent_config) completed.push('agents');
-    if (session.worker_config) completed.push('workers');
-    if (session.strategy) completed.push('strategy');
-    if (session.configs) completed.push('configs');
-    setCompletedSteps(completed);
-
-    if (!session.configs && !isGenerating && !error) {
-      startGeneration();
-    }
-  }, [
-    session.status,
-    session.agent_config,
-    session.worker_config,
-    session.strategy,
-    session.configs,
-    isGenerating,
-    error,
-  ]);
-
-  async function startGeneration() {
+  const startGeneration = useCallback(async () => {
     setIsGenerating(true);
     setError('');
 
@@ -106,7 +95,12 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
               throw new Error(data.error);
             }
 
-            if (data.step === 'agents' || data.step === 'workers' || data.step === 'strategy' || data.step === 'configs') {
+            if (
+              data.step === 'agents' ||
+              data.step === 'workers' ||
+              data.step === 'strategy' ||
+              data.step === 'configs'
+            ) {
               setCurrentStep(data.step);
             }
 
@@ -122,7 +116,7 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
             }
 
             if (data.done === true) {
-              onRefresh();
+              await Promise.resolve(onRefresh());
             }
           }
         }
@@ -131,6 +125,102 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
       setError(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       setIsGenerating(false);
+    }
+  }, [session.id, onRefresh]);
+
+  useEffect(() => {
+    if (session.status === 'completed') {
+      setCompletedSteps(['agents', 'workers', 'strategy', 'configs']);
+      setCurrentStep(null);
+      return;
+    }
+
+    if (session.status !== 'generation') {
+      return;
+    }
+
+    const completed: GenerationStep[] = [];
+    if (session.agent_config) completed.push('agents');
+    if (session.worker_config) completed.push('workers');
+    if (session.strategy) completed.push('strategy');
+    if (session.configs) completed.push('configs');
+    setCompletedSteps(completed);
+
+    if (!session.configs && !isGenerating && !error) {
+      startGeneration();
+    }
+  }, [
+    session.status,
+    session.agent_config,
+    session.worker_config,
+    session.strategy,
+    session.configs,
+    isGenerating,
+    error,
+    startGeneration,
+  ]);
+
+  useEffect(() => {
+    if (session.status !== 'completed') {
+      setActivationState('idle');
+      setActivationMessage('');
+      setActivationMissionId(null);
+      return;
+    }
+
+    if (session.activated_at) {
+      setActivationState('success');
+      setActivationMissionId(session.activation_mission_id ?? null);
+      setActivationMessage(
+        `Startup activated at ${new Date(session.activated_at).toLocaleString()}.`,
+      );
+    }
+  }, [session.status, session.activated_at, session.activation_mission_id]);
+
+  async function activateStartup(forceReplace: boolean) {
+    setActivationState('activating');
+    setActivationMessage('');
+
+    try {
+      const res = await fetch(`/api/pitch/${session.id}/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceReplace, autoRunNow: true }),
+      });
+      const payload = await res.json().catch(() => null);
+
+      if (res.status === 409 && payload?.requiresConfirmation === true) {
+        setActivationState('confirm_replace');
+        setActivationMessage(
+          payload?.error && typeof payload.error === 'string'
+            ? payload.error
+            : 'Runtime configuration already exists. Confirm replacement to continue.',
+        );
+        return;
+      }
+
+      if (!res.ok) {
+        throw new Error(
+          payload?.error && typeof payload.error === 'string'
+            ? payload.error
+            : 'Activation failed',
+        );
+      }
+
+      const missionId =
+        payload?.missionId && typeof payload.missionId === 'string'
+          ? payload.missionId
+          : null;
+      const autoRun = parseActivationAutoRun(payload?.autoRun);
+      setActivationMissionId(missionId);
+      setActivationState('success');
+      setActivationMessage(
+        buildActivationMessage(payload?.replacedExisting === true, autoRun),
+      );
+      await Promise.resolve(onRefresh());
+    } catch (err) {
+      setActivationState('error');
+      setActivationMessage(err instanceof Error ? err.message : 'Activation failed');
     }
   }
 
@@ -150,6 +240,7 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
   }
 
   const isComplete = session.status === 'completed';
+  const isActivated = activationState === 'success' || Boolean(session.activated_at);
 
   return (
     <div
@@ -163,14 +254,20 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>
-            {isComplete ? '🎉' : '⚙️'}
+            {isComplete ? (isActivated ? '🚀' : '🎉') : '⚙️'}
           </div>
           <h2 style={{ fontSize: 18, margin: '0 0 8px 0', color: '#e0e0e0' }}>
-            {isComplete ? 'Your AI Startup is Ready!' : 'Generating Your AI Team'}
+            {isComplete
+              ? isActivated
+                ? 'Your AI Startup Is Active'
+                : 'Your AI Startup Is Ready'
+              : 'Generating Your AI Team'}
           </h2>
           <p style={{ fontSize: 12, color: '#7a7a92', margin: 0 }}>
             {isComplete
-              ? `${session.startup_name} is ready to launch.`
+              ? isActivated
+                ? `${session.startup_name} is running with live runtime config.`
+                : `${session.startup_name} is ready to activate.`
               : 'This may take a minute or two...'}
           </p>
         </div>
@@ -351,6 +448,121 @@ export default function GenerationProgress({ session, onRefresh }: GenerationPro
           </div>
         )}
 
+        {isComplete && (
+          <div
+            style={{
+              background: '#0f0f25',
+              border: '1px solid #2a2a5a',
+              borderRadius: 8,
+              padding: 20,
+              marginBottom: 24,
+            }}
+          >
+            <h3 style={{ fontSize: 16, margin: '0 0 14px 0', color: '#e0e0e0' }}>
+              Launch Readiness
+            </h3>
+            <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+              {readiness.checks.map((check) => (
+                <div
+                  key={check.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    fontSize: 12,
+                    color: check.ready ? '#9fe3b7' : '#ffb2b2',
+                  }}
+                >
+                  <span>{check.ready ? '✓' : '✕'}</span>
+                  <span>{check.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {!readiness.ready && (
+              <div style={activationHintStyle}>
+                Activation is blocked until all readiness checks pass.
+              </div>
+            )}
+
+            {activationMessage && (
+              <div
+                style={{
+                  ...activationHintStyle,
+                  borderColor: activationState === 'error' ? '#5f2b2b' : '#2b5f44',
+                  background: activationState === 'error' ? '#301010' : '#103020',
+                  color: activationState === 'error' ? '#ff8f8f' : '#7fe0a8',
+                }}
+              >
+                {activationMessage}
+                {activationMissionId ? ` Mission: ${activationMissionId}` : ''}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {activationState === 'confirm_replace' ? (
+                <>
+                  <button
+                    onClick={() => activateStartup(true)}
+                    style={{
+                      ...downloadButtonStyle,
+                      padding: '10px 18px',
+                      background: '#7f3a1a',
+                    }}
+                  >
+                    Replace Existing Runtime
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActivationState('idle');
+                      setActivationMessage('');
+                    }}
+                    style={{
+                      ...downloadButtonStyle,
+                      padding: '10px 18px',
+                      background: '#1a1a3a',
+                      color: '#9aa0ff',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => activateStartup(false)}
+                  disabled={!readiness.ready || activationState === 'activating' || isActivated}
+                  style={{
+                    ...downloadButtonStyle,
+                    padding: '10px 18px',
+                    opacity: !readiness.ready || activationState === 'activating' || isActivated ? 0.7 : 1,
+                    cursor: !readiness.ready || activationState === 'activating' || isActivated
+                      ? 'not-allowed'
+                      : 'pointer',
+                  }}
+                >
+                  {isActivated
+                    ? 'Startup Activated'
+                    : activationState === 'activating'
+                      ? 'Activating...'
+                      : 'Activate Startup'}
+                </button>
+              )}
+
+              <button
+                onClick={() => (window.location.href = '/')}
+                style={{
+                  ...downloadButtonStyle,
+                  padding: '10px 18px',
+                  background: '#1a1a3a',
+                  color: '#9aa0ff',
+                }}
+              >
+                Open Dashboard
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Download button */}
         {isComplete && session.configs && (
           <div style={{ display: 'flex', justifyContent: 'center', gap: 12 }}>
@@ -391,3 +603,72 @@ const downloadButtonStyle: CSSProperties = {
   cursor: 'pointer',
   fontFamily: 'inherit',
 };
+
+const activationHintStyle: CSSProperties = {
+  border: '1px solid #2a2a5a',
+  background: '#101030',
+  padding: 10,
+  fontSize: 11,
+  color: '#aab0d0',
+  borderRadius: 6,
+  marginBottom: 12,
+};
+
+function parseActivationAutoRun(value: unknown): ActivationAutoRunPayload | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  const result = v.result;
+  const parsedResult =
+    result && typeof result === 'object' && !Array.isArray(result)
+      ? (() => {
+        const r = result as Record<string, unknown>;
+        return {
+          skipped: r.skipped === true,
+          reason: typeof r.reason === 'string' ? r.reason : undefined,
+          stepsExecuted: asNumberOrUndefined(r.stepsExecuted),
+          stepsFailed: asNumberOrUndefined(r.stepsFailed),
+          stepsRecovered: asNumberOrUndefined(r.stepsRecovered),
+        };
+      })()
+      : null;
+
+  return {
+    attempted: v.attempted === true,
+    succeeded: v.succeeded === true,
+    error: typeof v.error === 'string' ? v.error : null,
+    result: parsedResult,
+  };
+}
+
+function buildActivationMessage(
+  replacedExisting: boolean,
+  autoRun: ActivationAutoRunPayload | null,
+): string {
+  const prefix = replacedExisting
+    ? 'Startup activated. Existing runtime configuration was replaced.'
+    : 'Startup activated. Runtime is now live.';
+
+  if (!autoRun?.attempted) {
+    return prefix;
+  }
+
+  if (autoRun.succeeded) {
+    if (autoRun.result?.skipped) {
+      const reason = autoRun.result.reason ?? 'no-op';
+      return `${prefix} Auto-run skipped (${reason}); use Control Panel to run now.`;
+    }
+
+    const executed = autoRun.result?.stepsExecuted ?? 0;
+    const failed = autoRun.result?.stepsFailed ?? 0;
+    const recovered = autoRun.result?.stepsRecovered ?? 0;
+    return `${prefix} First mission bootstrap executed (${executed} succeeded, ${failed} failed, ${recovered} recovered).`;
+  }
+
+  const error = autoRun.error ?? 'unknown error';
+  return `${prefix} Auto-run failed (${error}); use Control Panel to run now.`;
+}
+
+function asNumberOrUndefined(value: unknown): number | undefined {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}

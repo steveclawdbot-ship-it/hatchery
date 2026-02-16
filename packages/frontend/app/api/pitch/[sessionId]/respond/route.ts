@@ -7,6 +7,7 @@ import {
   streamPitchText,
 } from '@/lib/pitch/llm';
 import type { Round } from '@/lib/pitch/types';
+import { getRoundCompletionStatus } from '@/lib/pitch/state-machine';
 
 export async function POST(
   req: Request,
@@ -89,14 +90,15 @@ export async function POST(
 
           const updatedRounds = [...rounds, newRound];
           const nextRound = currentRound + 1;
-          const isComplete = nextRound > PITCH_ROUNDS.length;
+          const nextStatus = getRoundCompletionStatus(currentRound, PITCH_ROUNDS.length);
+          const isComplete = nextStatus === 'synthesis';
 
           const { error: updateError } = await db
             .from('pitch_sessions')
             .update({
               rounds: updatedRounds,
               current_round: isComplete ? currentRound : nextRound,
-              status: isComplete ? 'synthesis' : session.status,
+              status: nextStatus,
             })
             .eq('id', sessionId);
 

@@ -1,4 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  getSkipReason,
+  hasReachedBudgetCap,
+  hasReachedLoopCap as evaluateLoopCap,
+} from '@/lib/heartbeat/decision';
 
 interface RuntimeConfig {
   companyTemplate: 'research' | 'back-office' | 'creative';
@@ -8,6 +13,12 @@ interface RuntimeConfig {
   budgetLimit: number;
   loopCapPerDay: number;
   postLimitPerDay: number;
+}
+
+interface AlertThresholds {
+  missionFailures24h: number;
+  stepFailureRate24h: number;
+  heartbeatFailures24h: number;
 }
 
 interface StepRecord {
@@ -44,13 +55,25 @@ const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   postLimitPerDay: 5,
 };
 
+const DEFAULT_ALERT_THRESHOLDS: AlertThresholds = {
+  missionFailures24h: 3,
+  stepFailureRate24h: 0.4,
+  heartbeatFailures24h: 3,
+};
+
 const MAX_STEPS_PER_TICK = 3;
 const MAX_STEP_RETRIES = 2;
 
-export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRunResult> {
+export async function runHeartbeatCycle(
+  db: SupabaseClient,
+  options?: { bypassCaps?: boolean; source?: string },
+): Promise<HeartbeatRunResult> {
+  const bypassCaps = options?.bypassCaps === true;
+  const source = options?.source ?? 'heartbeat';
+
   const { data: run, error: runError } = await db
     .from('ops_action_runs')
-    .insert({ action: 'heartbeat' })
+    .insert({ action: 'heartbeat', status: 'running' })
     .select('id')
     .single();
 
@@ -61,14 +84,17 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
   try {
     const stepsRecovered = await recoverStuckSteps(db);
     const config = await loadRuntimeConfig(db);
+    const alertThresholds = await loadAlertThresholds(db);
     const loopCapReached = await hasReachedLoopCap(db, config.loopCapPerDay);
-    if (loopCapReached) {
+    if (loopCapReached && !bypassCaps) {
       await emitEvent(
         db,
         'system.loop_cap_reached',
         'Loop cap reached',
         {
           loopCapPerDay: config.loopCapPerDay,
+          runId: run.id,
+          source,
         },
       );
 
@@ -94,7 +120,7 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
     }
 
     const budgetState = await getBudgetState(db, config.budgetLimit);
-    if (budgetState.reached) {
+    if (budgetState.reached && !bypassCaps) {
       await emitEvent(
         db,
         'system.budget_cap_reached',
@@ -102,6 +128,8 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
         {
           budgetLimit: config.budgetLimit,
           estimatedSpendUsd: budgetState.estimatedSpendUsd,
+          runId: run.id,
+          source,
         },
       );
 
@@ -128,12 +156,17 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
     }
 
     const pending = await loadPendingSteps(db);
-    if (pending.length === 0) {
+    const pendingSkipReason = getSkipReason({
+      loopCapReached: false,
+      budgetCapReached: false,
+      pendingStepCount: pending.length,
+    });
+    if (pendingSkipReason === 'no_pending_steps') {
       await completeRun(db, run.id, {
         status: 'succeeded',
         details: {
           skipped: true,
-          reason: 'no_pending_steps',
+          reason: pendingSkipReason,
           stepsRecovered,
           stepsExecuted: 0,
           stepsFailed: 0,
@@ -146,7 +179,7 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
         stepsExecuted: 0,
         stepsFailed: 0,
         skipped: true,
-        reason: 'no_pending_steps',
+        reason: pendingSkipReason,
       };
     }
 
@@ -180,6 +213,7 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
             stepId: step.id,
             kind: step.kind,
             missionId: step.mission_id,
+            runId: run.id,
             output: result.output ?? {},
           },
         );
@@ -199,34 +233,116 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
           stepId: step.id,
           kind: step.kind,
           missionId: step.mission_id,
+          runId: run.id,
           error: result.error ?? 'Unknown step failure',
         },
       );
+      try {
+        await createStepFailureIntervention(db, {
+          runId: run.id,
+          stepId: step.id,
+          missionId: step.mission_id,
+          kind: step.kind,
+          error: result.error ?? 'Unknown step failure',
+        });
+      } catch {
+        // Do not fail heartbeat if intervention queue write fails.
+      }
     }
 
     const recentMissionFailures = await countRecentMissionFailures(db);
-    if (recentMissionFailures >= 3) {
+    if (recentMissionFailures >= alertThresholds.missionFailures24h) {
       await emitEvent(
         db,
         'system.alert',
         'Multiple mission failures detected',
         {
           recentMissionFailures,
-          threshold: 3,
+          threshold: alertThresholds.missionFailures24h,
+          runId: run.id,
           recommendation: 'Switch to manual intervention mode for this company.',
         },
       );
+      try {
+        await createEscalationIntervention(db, {
+          runId: run.id,
+          title: 'Mission failure threshold exceeded',
+          description: `Mission failures in last 24h: ${recentMissionFailures} (threshold ${alertThresholds.missionFailures24h}).`,
+          context: {
+            recentMissionFailures,
+            missionFailureThreshold24h: alertThresholds.missionFailures24h,
+          },
+        });
+      } catch {
+        // Do not fail heartbeat if intervention queue write fails.
+      }
+    }
+
+    const failureRate24h = await getStepFailureRate24h(db);
+    if (failureRate24h >= alertThresholds.stepFailureRate24h) {
+      await emitEvent(
+        db,
+        'system.alert',
+        'Step failure rate threshold exceeded',
+        {
+          runId: run.id,
+          failureRate24h,
+          threshold: alertThresholds.stepFailureRate24h,
+        },
+      );
+      try {
+        await createEscalationIntervention(db, {
+          runId: run.id,
+          title: 'Step failure rate threshold exceeded',
+          description: `Step failure rate in last 24h: ${(failureRate24h * 100).toFixed(1)}% (threshold ${(alertThresholds.stepFailureRate24h * 100).toFixed(1)}%).`,
+          context: {
+            failureRate24h,
+            stepFailureRateThreshold24h: alertThresholds.stepFailureRate24h,
+          },
+        });
+      } catch {
+        // Do not fail heartbeat if intervention queue write fails.
+      }
+    }
+
+    const heartbeatFailures24h = await countHeartbeatFailures24h(db);
+    if (heartbeatFailures24h >= alertThresholds.heartbeatFailures24h) {
+      await emitEvent(
+        db,
+        'system.alert',
+        'Heartbeat failure threshold exceeded',
+        {
+          runId: run.id,
+          heartbeatFailures24h,
+          threshold: alertThresholds.heartbeatFailures24h,
+        },
+      );
+      try {
+        await createEscalationIntervention(db, {
+          runId: run.id,
+          title: 'Heartbeat failure threshold exceeded',
+          description: `Heartbeat failures in last 24h: ${heartbeatFailures24h} (threshold ${alertThresholds.heartbeatFailures24h}).`,
+          context: {
+            heartbeatFailures24h,
+            heartbeatFailureThreshold24h: alertThresholds.heartbeatFailures24h,
+          },
+        });
+      } catch {
+        // Do not fail heartbeat if intervention queue write fails.
+      }
     }
 
     await emitEvent(
       db,
       'system.heartbeat',
       'Heartbeat',
-      {
-        stepsRecovered,
-        stepsExecuted,
-        stepsFailed,
-        missionId: activeMissionId,
+        {
+          runId: run.id,
+          source,
+          stepsRecovered,
+          stepsExecuted,
+          stepsFailed,
+          missionId: activeMissionId,
       },
     );
 
@@ -239,6 +355,8 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
         stepsFailed,
         missionId: activeMissionId,
         estimatedSpendUsd: budgetState.estimatedSpendUsd,
+        bypassCaps,
+        source,
       },
     });
 
@@ -251,6 +369,19 @@ export async function runHeartbeatCycle(db: SupabaseClient): Promise<HeartbeatRu
     };
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
+
+    try {
+      await createEscalationIntervention(db, {
+        runId: run.id,
+        title: 'Heartbeat run failed',
+        description: errorMessage,
+        context: {
+          error: errorMessage,
+        },
+      });
+    } catch {
+      // Preserve original failure path if intervention insertion fails.
+    }
 
     await completeRun(db, run.id, {
       status: 'failed',
@@ -312,6 +443,36 @@ async function loadRuntimeConfig(db: SupabaseClient): Promise<RuntimeConfig> {
   };
 }
 
+async function loadAlertThresholds(db: SupabaseClient): Promise<AlertThresholds> {
+  const { data, error } = await db
+    .from('ops_policies')
+    .select('value')
+    .eq('key', 'alert_thresholds')
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw new Error(`Failed to load alert thresholds: ${error.message}`);
+  }
+
+  const value = data?.value;
+  if (!value || !isRecord(value)) return DEFAULT_ALERT_THRESHOLDS;
+
+  return {
+    missionFailures24h: asPositiveNumber(
+      value.missionFailures24h,
+      DEFAULT_ALERT_THRESHOLDS.missionFailures24h,
+    ),
+    stepFailureRate24h: asRatio(
+      value.stepFailureRate24h,
+      DEFAULT_ALERT_THRESHOLDS.stepFailureRate24h,
+    ),
+    heartbeatFailures24h: asPositiveNumber(
+      value.heartbeatFailures24h,
+      DEFAULT_ALERT_THRESHOLDS.heartbeatFailures24h,
+    ),
+  };
+}
+
 async function hasReachedLoopCap(db: SupabaseClient, loopCapPerDay: number): Promise<boolean> {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
@@ -327,7 +488,7 @@ async function hasReachedLoopCap(db: SupabaseClient, loopCapPerDay: number): Pro
     throw new Error(`Failed to evaluate loop cap: ${error.message}`);
   }
 
-  return (count ?? 0) >= loopCapPerDay;
+  return evaluateLoopCap(count ?? 0, loopCapPerDay);
 }
 
 async function loadPendingSteps(db: SupabaseClient): Promise<StepRecord[]> {
@@ -701,9 +862,11 @@ async function getBudgetState(
     estimatedSpendUsd += cost;
   }
 
+  const rounded = Number(estimatedSpendUsd.toFixed(4));
+
   return {
-    reached: estimatedSpendUsd >= budgetLimit,
-    estimatedSpendUsd: Number(estimatedSpendUsd.toFixed(4)),
+    reached: hasReachedBudgetCap(rounded, budgetLimit),
+    estimatedSpendUsd: rounded,
   };
 }
 
@@ -720,6 +883,169 @@ async function countRecentMissionFailures(db: SupabaseClient): Promise<number> {
   }
 
   return count ?? 0;
+}
+
+async function getStepFailureRate24h(db: SupabaseClient): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const [{ count: failed, error: failedError }, { count: succeeded, error: succeededError }] =
+    await Promise.all([
+      db
+        .from('ops_steps')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'failed')
+        .gte('completed_at', since),
+      db
+        .from('ops_steps')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'succeeded')
+        .gte('completed_at', since),
+    ]);
+
+  if (failedError) {
+    throw new Error(`Failed to count failed steps: ${failedError.message}`);
+  }
+  if (succeededError) {
+    throw new Error(`Failed to count succeeded steps: ${succeededError.message}`);
+  }
+
+  const failedCount = failed ?? 0;
+  const succeededCount = succeeded ?? 0;
+  const total = failedCount + succeededCount;
+  if (total === 0) return 0;
+  return failedCount / total;
+}
+
+async function countHeartbeatFailures24h(db: SupabaseClient): Promise<number> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const { count, error } = await db
+    .from('ops_action_runs')
+    .select('*', { count: 'exact', head: true })
+    .eq('action', 'heartbeat')
+    .eq('status', 'failed')
+    .gte('started_at', since);
+
+  if (error) {
+    throw new Error(`Failed to count heartbeat failures: ${error.message}`);
+  }
+
+  return count ?? 0;
+}
+
+async function createStepFailureIntervention(
+  db: SupabaseClient,
+  params: {
+    runId: string;
+    stepId: string;
+    missionId: string;
+    kind: string;
+    error: string;
+  },
+): Promise<void> {
+  const existing = await db
+    .from('ops_interventions')
+    .select('id')
+    .eq('step_id', params.stepId)
+    .neq('status', 'resolved')
+    .limit(1);
+
+  if (!existing.error && existing.data && existing.data.length > 0) {
+    return;
+  }
+
+  const classification = classifyIntervention(params.error);
+  await db.from('ops_interventions').insert({
+    status: 'open',
+    reason: classification.reason,
+    severity: classification.severity,
+    title: `${classification.title}: ${params.kind}`,
+    description: params.error,
+    step_id: params.stepId,
+    mission_id: params.missionId,
+    action_run_id: params.runId,
+    context: {
+      kind: params.kind,
+      error: params.error,
+    },
+  });
+}
+
+async function createEscalationIntervention(
+  db: SupabaseClient,
+  params: {
+    runId: string;
+    title: string;
+    description: string;
+    context: Record<string, unknown>;
+  },
+): Promise<void> {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const existing = await db
+    .from('ops_interventions')
+    .select('id')
+    .eq('reason', 'escalation')
+    .eq('title', params.title)
+    .neq('status', 'resolved')
+    .gte('created_at', oneHourAgo)
+    .limit(1);
+
+  if (!existing.error && existing.data && existing.data.length > 0) {
+    return;
+  }
+
+  const { error } = await db.from('ops_interventions').insert({
+    status: 'open',
+    reason: 'escalation',
+    severity: 'critical',
+    title: params.title,
+    description: params.description,
+    action_run_id: params.runId,
+    context: params.context,
+  });
+
+  if (error && !isLikelyDuplicateError(error.message)) {
+    throw new Error(`Failed to create escalation intervention: ${error.message}`);
+  }
+}
+
+function classifyIntervention(errorMessage: string): {
+  reason: string;
+  severity: 'medium' | 'high';
+  title: string;
+} {
+  const normalized = errorMessage.toLowerCase();
+  if (normalized.includes('safety filter') || normalized.includes('blocked')) {
+    return {
+      reason: 'safety_blocked',
+      severity: 'high',
+      title: 'Safety block requires review',
+    };
+  }
+  if (normalized.includes('not configured') || normalized.includes('not supported')) {
+    return {
+      reason: 'integration_blocked',
+      severity: 'medium',
+      title: 'Integration configuration required',
+    };
+  }
+  if (normalized.includes('cap reached') || normalized.includes('quota')) {
+    return {
+      reason: 'quota_blocked',
+      severity: 'medium',
+      title: 'Quota or cap blocked execution',
+    };
+  }
+  return {
+    reason: 'step_failed',
+    severity: 'high',
+    title: 'Step execution failed',
+  };
+}
+
+function isLikelyDuplicateError(message: string): boolean {
+  const lowered = message.toLowerCase();
+  return lowered.includes('duplicate key') || lowered.includes('already exists');
 }
 
 async function completeRun(
@@ -778,6 +1104,12 @@ function parseMetricName(value: unknown): string {
 function asPositiveNumber(value: unknown, fallback: number): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function asRatio(value: unknown, fallback: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) return fallback;
   return parsed;
 }
 

@@ -1,4 +1,9 @@
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
+import {
+  canTransitionPitchStatus,
+  isPitchSessionStatus,
+  type PitchSessionStatus,
+} from '@/lib/pitch/state-machine';
 
 // GET: Fetch session by ID
 export async function GET(
@@ -44,6 +49,29 @@ export async function PATCH(
 
   try {
     const body = await req.json();
+
+    const { data: currentSession, error: currentSessionError } = await db
+      .from('pitch_sessions')
+      .select('status')
+      .eq('id', sessionId)
+      .single();
+
+    if (currentSessionError || !currentSession) {
+      return Response.json({ error: 'Session not found' }, { status: 404 });
+    }
+
+    const currentStatus = currentSession.status as PitchSessionStatus;
+    const statusValue = body?.status;
+    if (statusValue !== undefined && !isPitchSessionStatus(statusValue)) {
+      return Response.json({ error: `Invalid status value: ${String(statusValue)}` }, { status: 400 });
+    }
+
+    const requestedStatus = statusValue as PitchSessionStatus | undefined;
+    if (requestedStatus && !canTransitionPitchStatus(currentStatus, requestedStatus)) {
+      return Response.json({
+        error: `Invalid status transition: ${currentStatus} -> ${requestedStatus}`,
+      }, { status: 400 });
+    }
 
     // Only allow updating specific fields
     const allowedFields = [

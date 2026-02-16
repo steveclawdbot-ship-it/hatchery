@@ -1,4 +1,4 @@
-import { z, ZodSchema } from 'zod';
+import { ZodSchema } from 'zod';
 
 export type Tier = 'cheap' | 'mid' | 'expensive';
 

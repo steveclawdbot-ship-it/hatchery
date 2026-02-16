@@ -104,7 +104,11 @@ export default function MissionList() {
               <div
                 onClick={() => {
                   const next = new Set(expanded);
-                  next.has(mission.id) ? next.delete(mission.id) : next.add(mission.id);
+                  if (next.has(mission.id)) {
+                    next.delete(mission.id);
+                  } else {
+                    next.add(mission.id);
+                  }
                   setExpanded(next);
                 }}
                 style={{

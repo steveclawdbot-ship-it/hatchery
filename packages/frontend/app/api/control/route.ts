@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { runHeartbeatCycle } from '@/lib/heartbeat-runner';
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
-
-type RuntimeMode = 'running' | 'paused' | 'stopped';
-type ControlAction = 'run_now' | 'pause' | 'resume' | 'stop_all';
+import {
+  modeForAction,
+  parseControlAction,
+  type RuntimeMode,
+} from '@/lib/control/runtime-control';
 
 interface RuntimeControlPolicy {
   mode: RuntimeMode;
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
   }
 
-  const action = parseAction(body);
+  const action = parseControlAction(body);
   if (!action) {
     return NextResponse.json({ error: 'Invalid control action' }, { status: 400 });
   }
@@ -68,11 +70,7 @@ export async function POST(request: Request) {
     }
   }
 
-  const nextMode = action === 'pause'
-    ? 'paused'
-    : action === 'resume'
-      ? 'running'
-      : 'stopped';
+  const nextMode = modeForAction(action);
 
   const updatedControl: RuntimeControlPolicy = {
     mode: nextMode,
@@ -114,20 +112,6 @@ export async function POST(request: Request) {
     control: toPublicControl(updatedControl),
     terminatedSteps,
   });
-}
-
-function parseAction(value: unknown): ControlAction | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const action = (value as Record<string, unknown>).action;
-  if (
-    action === 'run_now' ||
-    action === 'pause' ||
-    action === 'resume' ||
-    action === 'stop_all'
-  ) {
-    return action;
-  }
-  return null;
 }
 
 async function loadRuntimeControl(db: SupabaseClient): Promise<RuntimeControlPolicy> {

@@ -78,11 +78,11 @@ export async function createCommand(
   // Print next steps
   console.log(chalk.bold.cyan('  Next steps:'));
   console.log(chalk.white(`  1. cd ${dir}`));
-  console.log(chalk.white('  2. Edit .env with your Supabase credentials'));
+  console.log(chalk.white('  2. Edit .env with your Supabase credentials and API keys'));
   console.log(chalk.white('  3. Run migrations: hatchery deploy db'));
-  console.log(chalk.white('  4. Seed data: npm run seed'));
-  console.log(chalk.white('  5. Start heartbeat: npm run heartbeat'));
+  console.log(chalk.white('  4. Build or provide runtime scripts for heartbeat/worker/seed execution'));
+  console.log(chalk.white('  5. Start runtime only after database + scripts are verified'));
   console.log('');
-  console.log(chalk.bold.green('  Your AI startup is ready to hatch.'));
+  console.log(chalk.bold.yellow('  Project scaffold complete. Deployment/runtime setup is still required.'));
   console.log('');
 }

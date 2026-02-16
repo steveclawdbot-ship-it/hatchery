@@ -1,6 +1,7 @@
 'use client';
 
 import { type CSSProperties, useEffect, useState } from 'react';
+import OperationsSummary from '@/components/dashboard/operations-summary';
 
 type CompanyTemplate = 'research' | 'back-office' | 'creative';
 type RuntimeMode = 'running' | 'paused' | 'stopped';
@@ -287,6 +288,8 @@ export default function ControlPanel() {
           {control.updatedAt ? `Last mode update: ${new Date(control.updatedAt).toLocaleString()}.` : ''}
         </div>
       </section>
+
+      <OperationsSummary />
 
       {message && (
         <div style={{ border: '1px solid #2b5f44', background: '#103020', padding: 10, fontSize: 11, color: '#7fe0a8', borderRadius: 6 }}>

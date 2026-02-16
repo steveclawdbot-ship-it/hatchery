@@ -192,7 +192,7 @@ export class Heartbeat {
   private async startRun(): Promise<string> {
     const { data } = await this.db
       .from('ops_action_runs')
-      .insert({ action: 'heartbeat' })
+      .insert({ action: 'heartbeat', status: 'running' })
       .select('id')
       .single();
     return data?.id ?? '';
