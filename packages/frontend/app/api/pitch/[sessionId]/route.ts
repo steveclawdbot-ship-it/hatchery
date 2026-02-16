@@ -76,6 +76,8 @@ export async function PATCH(
     // Only allow updating specific fields
     const allowedFields = [
       'startup_name',
+      'provider',
+      'model',
       'status',
       'current_round',
       'rounds',

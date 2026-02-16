@@ -16,6 +16,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         flexDirection: 'column',
         alignItems: isVC ? 'flex-start' : 'flex-end',
         marginBottom: 24,
+        animation: 'slideUp 0.3s ease-out',
       }}
     >
       {/* Avatar and label */}
@@ -33,7 +34,8 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             width: 36,
             height: 36,
             borderRadius: 6,
-            background: isVC ? '#7c5cff33' : '#1a1a3a',
+            background: isVC ? 'rgba(124, 92, 255, 0.15)' : 'var(--hatch-bg-surface)',
+            border: `1px solid ${isVC ? 'rgba(124, 92, 255, 0.3)' : 'var(--hatch-border-default)'}`,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -42,17 +44,23 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         >
           {isVC ? '🎩' : '👤'}
         </div>
-        <span style={{ fontSize: 12, color: '#7a7a92' }}>
+        <span style={{
+          fontSize: 12,
+          fontFamily: 'var(--hatch-font-body)',
+          color: 'var(--hatch-text-muted)',
+        }}>
           {isVC ? 'VC Partner' : 'You'}
         </span>
         {message.focus && isVC && (
           <span
             style={{
-              fontSize: 11,
-              color: '#7c5cff',
+              fontSize: 10,
+              fontFamily: 'var(--hatch-font-display)',
+              color: 'var(--hatch-accent-primary)',
               padding: '4px 10px',
-              background: '#7c5cff22',
+              background: 'rgba(124, 92, 255, 0.1)',
               borderRadius: 4,
+              textShadow: '0 0 6px rgba(124, 92, 255, 0.3)',
             }}
           >
             {message.focus}
@@ -66,17 +74,20 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           maxWidth: '85%',
           padding: '16px 20px',
           borderRadius: 12,
-          background: isVC ? '#1a1a3a' : '#0f0f25',
-          border: isVC ? '1px solid #7c5cff44' : '1px solid #2a2a5a',
+          background: isVC ? 'rgba(10, 10, 26, 0.85)' : 'var(--hatch-bg-surface)',
+          backdropFilter: isVC ? 'blur(12px)' : undefined,
+          border: isVC ? '1px solid rgba(124, 92, 255, 0.25)' : '1px solid var(--hatch-border-default)',
           borderTopLeftRadius: isVC ? 0 : 12,
           borderTopRightRadius: isVC ? 12 : 0,
+          boxShadow: isVC ? '0 2px 12px rgba(124, 92, 255, 0.08)' : undefined,
         }}
       >
         <div
           style={{
             fontSize: 14,
+            fontFamily: 'var(--hatch-font-body)',
             lineHeight: 1.7,
-            color: '#e0e0e0',
+            color: 'var(--hatch-text-primary)',
             whiteSpace: 'pre-wrap',
           }}
         >
@@ -87,9 +98,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
                 display: 'inline-block',
                 width: 8,
                 height: 16,
-                background: '#7c5cff',
+                background: 'var(--hatch-accent-primary)',
                 marginLeft: 2,
                 animation: 'blink 1s infinite',
+                boxShadow: '0 0 6px rgba(124, 92, 255, 0.5)',
               }}
             />
           )}
@@ -100,7 +112,8 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       <span
         style={{
           fontSize: 10,
-          color: '#4a4a6a',
+          fontFamily: 'var(--hatch-font-body)',
+          color: 'var(--hatch-text-muted)',
           marginTop: 6,
           paddingLeft: isVC ? 46 : 0,
           paddingRight: isVC ? 0 : 46,
@@ -108,13 +121,6 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
       >
         {new Date(message.timestamp).toLocaleTimeString()}
       </span>
-
-      <style>{`
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }

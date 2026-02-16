@@ -11,10 +11,53 @@ interface RecentSession {
   created_at: string;
 }
 
+type ProviderValue = 'anthropic' | 'openai' | 'google' | 'kimi' | 'zai';
+
+interface ModelOption {
+  id: string;
+  displayName: string;
+}
+
+const PROVIDER_OPTIONS: Array<{ value: ProviderValue; label: string }> = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'google', label: 'Google' },
+  { value: 'kimi', label: 'Kimi' },
+  { value: 'zai', label: 'Z.AI' },
+];
+
+function isProviderValue(value: string): value is ProviderValue {
+  return PROVIDER_OPTIONS.some((option) => option.value === value);
+}
+
+function normalizeModelOptions(raw: unknown): ModelOption[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const deduped = new Map<string, ModelOption>();
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const id = 'id' in entry && typeof entry.id === 'string' ? entry.id.trim() : '';
+    if (!id || deduped.has(id)) continue;
+    const displayName =
+      'displayName' in entry && typeof entry.displayName === 'string' && entry.displayName.trim()
+        ? entry.displayName.trim()
+        : id;
+    deduped.set(id, { id, displayName });
+  }
+
+  return Array.from(deduped.values());
+}
+
 export default function PitchLanding() {
   const router = useRouter();
   const [startupName, setStartupName] = useState('');
-  const [provider, setProvider] = useState('anthropic');
+  const [provider, setProvider] = useState<ProviderValue>('anthropic');
+  const [model, setModel] = useState('');
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+  const [loadingModels, setLoadingModels] = useState(true);
+  const [modelWarning, setModelWarning] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [recentSessions, setRecentSessions] = useState<RecentSession[]>([]);
@@ -23,6 +66,56 @@ export default function PitchLanding() {
   useEffect(() => {
     loadRecentSessions();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProviderModels() {
+      setLoadingModels(true);
+      setModelWarning('');
+
+      try {
+        const res = await fetch(`/api/pitch/models?provider=${provider}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => null);
+
+        if (!res.ok) {
+          throw new Error(
+            data && typeof data.error === 'string' ? data.error : 'Failed to load model list'
+          );
+        }
+
+        const options = normalizeModelOptions(data?.models);
+        if (cancelled) return;
+
+        setModelOptions(options);
+        setModel((current) => {
+          if (options.some((option) => option.id === current)) {
+            return current;
+          }
+          return options[0]?.id ?? '';
+        });
+
+        if (data && typeof data.warning === 'string' && data.warning.trim().length > 0) {
+          setModelWarning(data.warning);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setModelOptions([]);
+        setModel('');
+        setModelWarning(err instanceof Error ? err.message : 'Failed to load model list');
+      } finally {
+        if (!cancelled) {
+          setLoadingModels(false);
+        }
+      }
+    }
+
+    void loadProviderModels();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [provider]);
 
   async function loadRecentSessions() {
     try {
@@ -44,6 +137,11 @@ export default function PitchLanding() {
       return;
     }
 
+    if (!model) {
+      setError('Please select a model');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -54,6 +152,7 @@ export default function PitchLanding() {
         body: JSON.stringify({
           startup_name: startupName.trim(),
           provider,
+          model,
         }),
       });
 
@@ -165,14 +264,58 @@ export default function PitchLanding() {
               <span>AI Provider</span>
               <select
                 value={provider}
-                onChange={(e) => setProvider(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (isProviderValue(value)) {
+                    setProvider(value);
+                  }
+                }}
                 style={inputStyle}
                 disabled={loading}
               >
-                <option value="anthropic">Anthropic (Claude)</option>
-                <option value="openai">OpenAI (GPT-4)</option>
+                {PROVIDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </label>
+
+            <label style={labelStyle}>
+              <span>Model</span>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                style={inputStyle}
+                disabled={loading || loadingModels || modelOptions.length === 0}
+              >
+                {loadingModels && <option value="">Loading models...</option>}
+                {!loadingModels && modelOptions.length === 0 && (
+                  <option value="">No models available</option>
+                )}
+                {!loadingModels
+                  && modelOptions.map((option) => (
+                    <option key={option.id} value={option.id}>
+                      {option.displayName}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            {modelWarning && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: '#ffd29a',
+                  background: '#2f2414',
+                  border: '1px solid #614522',
+                  padding: 10,
+                  borderRadius: 6,
+                }}
+              >
+                {modelWarning}
+              </div>
+            )}
 
             {error && (
               <div
@@ -189,7 +332,11 @@ export default function PitchLanding() {
               </div>
             )}
 
-            <button onClick={handleStart} disabled={loading} style={buttonStyle}>
+            <button
+              onClick={handleStart}
+              disabled={loading || loadingModels || !model}
+              style={buttonStyle}
+            >
               {loading ? 'Starting...' : 'Enter the Pitch Room'}
             </button>
           </div>

@@ -10,7 +10,8 @@ export interface Round {
 export interface PitchSession {
   id: string;
   startup_name: string | null;
-  provider: 'anthropic' | 'openai';
+  provider: 'anthropic' | 'openai' | 'google' | 'kimi' | 'zai';
+  model: string | null;
   status: 'in_progress' | 'synthesis' | 'approval' | 'generation' | 'completed';
   current_round: number;
   rounds: Round[];

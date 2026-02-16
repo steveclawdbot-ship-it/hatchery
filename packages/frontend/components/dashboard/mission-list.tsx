@@ -25,27 +25,17 @@ export default function MissionList() {
   const [missions, setMissions] = useState<Mission[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<string>('all');
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchMissions = async () => {
       try {
         const res = await fetch('/api/missions');
-        if (res.ok) {
-          setMissions(await res.json());
-        }
+        if (res.ok) { setMissions(await res.json()); }
       } catch {
-        // Demo data
         setMissions([
-          {
-            id: '1', title: 'Draft weekly newsletter', status: 'running',
-            created_by: 'coordinator', created_at: new Date().toISOString(),
-            completed_at: null, completed_steps: 1, total_steps: 3,
-          },
-          {
-            id: '2', title: 'Analyze competitor tweets', status: 'succeeded',
-            created_by: 'analyst', created_at: new Date(Date.now() - 3600000).toISOString(),
-            completed_at: new Date().toISOString(), completed_steps: 2, total_steps: 2,
-          },
+          { id: '1', title: 'Draft weekly newsletter', status: 'running', created_by: 'coordinator', created_at: new Date().toISOString(), completed_at: null, completed_steps: 1, total_steps: 3 },
+          { id: '2', title: 'Analyze competitor tweets', status: 'succeeded', created_by: 'analyst', created_at: new Date(Date.now() - 3600000).toISOString(), completed_at: new Date().toISOString(), completed_steps: 2, total_steps: 2 },
         ]);
       }
     };
@@ -54,37 +44,43 @@ export default function MissionList() {
     return () => clearInterval(interval);
   }, []);
 
-  const filtered = filter === 'all'
-    ? missions
-    : missions.filter((m) => m.status === filter);
+  const filtered = filter === 'all' ? missions : missions.filter((m) => m.status === filter);
 
   const statusColor = (status: string) => {
     switch (status) {
-      case 'running': return '#FF9800';
-      case 'succeeded': return '#4CAF50';
-      case 'failed': return '#F44336';
-      default: return '#9E9E9E';
+      case 'running': return 'var(--hatch-warning)';
+      case 'succeeded': return 'var(--hatch-success)';
+      case 'failed': return 'var(--hatch-danger)';
+      default: return 'var(--hatch-text-muted)';
     }
   };
 
   return (
-    <div>
+    <div style={{ animation: 'slideUp 0.4s ease-out' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>Missions</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <h2 style={{
+          fontSize: 13,
+          fontFamily: 'var(--hatch-font-display)',
+          color: 'var(--hatch-text-primary)',
+          margin: 0,
+        }}>
+          MISSIONS
+        </h2>
+        <div style={{ display: 'flex', gap: 6 }}>
           {['all', 'running', 'succeeded', 'failed'].map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               style={{
-                fontSize: 10,
+                fontSize: 9,
+                fontFamily: 'var(--hatch-font-display)',
                 padding: '4px 8px',
-                background: filter === f ? '#2a2a5a' : 'transparent',
-                color: filter === f ? '#7c5cff' : '#666',
-                border: '1px solid #2a2a5a',
+                background: filter === f ? 'var(--hatch-bg-elevated)' : 'transparent',
+                color: filter === f ? 'var(--hatch-accent-primary)' : 'var(--hatch-text-muted)',
+                border: '1px solid var(--hatch-border-default)',
                 borderRadius: 4,
                 cursor: 'pointer',
-                fontFamily: 'inherit',
+                transition: 'all 150ms ease',
               }}
             >
               {f.toUpperCase()}
@@ -93,62 +89,122 @@ export default function MissionList() {
         </div>
       </div>
 
-      <div style={{ border: '1px solid #2a2a5a', borderRadius: 4 }}>
+      <div style={{
+        border: '1px solid var(--hatch-border-default)',
+        borderRadius: 8,
+        background: 'var(--hatch-bg-surface)',
+        overflow: 'hidden',
+      }}>
         {filtered.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#666' }}>
+          <div style={{
+            padding: 32,
+            textAlign: 'center',
+            fontSize: 11,
+            fontFamily: 'var(--hatch-font-body)',
+            color: 'var(--hatch-text-muted)',
+          }}>
             No missions found.
           </div>
         ) : (
-          filtered.map((mission) => (
-            <div key={mission.id} style={{ borderBottom: '1px solid #1a1a3a' }}>
-              <div
-                onClick={() => {
-                  const next = new Set(expanded);
-                  if (next.has(mission.id)) {
-                    next.delete(mission.id);
-                  } else {
-                    next.add(mission.id);
-                  }
-                  setExpanded(next);
-                }}
-                style={{
-                  padding: '10px 12px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                }}
-              >
-                <span style={{
-                  width: 8, height: 8,
-                  backgroundColor: statusColor(mission.status),
-                  borderRadius: '50%',
-                  display: 'inline-block',
-                }} />
-                <span style={{ fontSize: 12, flex: 1 }}>{mission.title}</span>
-                <span style={{ fontSize: 10, color: '#7c5cff' }}>{mission.created_by}</span>
-                <span style={{ fontSize: 10, color: '#666' }}>
-                  {mission.completed_steps}/{mission.total_steps}
-                </span>
-              </div>
-
-              {expanded.has(mission.id) && mission.steps && (
-                <div style={{ padding: '0 12px 10px 32px' }}>
-                  {mission.steps.map((step) => (
-                    <div key={step.id} style={{
-                      fontSize: 11,
-                      padding: '4px 0',
-                      color: step.status === 'succeeded' ? '#4CAF50'
-                        : step.status === 'failed' ? '#F44336'
-                        : step.status === 'running' ? '#FF9800' : '#666',
+          <div className="stagger-mount">
+            {filtered.map((mission) => {
+              const isHovered = hoveredId === mission.id;
+              const progress = mission.total_steps > 0
+                ? (mission.completed_steps / mission.total_steps) * 100
+                : 0;
+              return (
+                <div key={mission.id} style={{ borderBottom: '1px solid var(--hatch-border-subtle)' }}>
+                  <div
+                    onClick={() => {
+                      const next = new Set(expanded);
+                      if (next.has(mission.id)) next.delete(mission.id);
+                      else next.add(mission.id);
+                      setExpanded(next);
+                    }}
+                    onMouseEnter={() => setHoveredId(mission.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    style={{
+                      padding: '10px 14px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      background: isHovered ? 'var(--hatch-bg-elevated)' : 'transparent',
+                      transition: 'background 150ms ease',
+                    }}
+                  >
+                    <span style={{
+                      width: 8,
+                      height: 8,
+                      backgroundColor: statusColor(mission.status),
+                      borderRadius: '50%',
+                      display: 'inline-block',
+                      boxShadow: `0 0 6px ${mission.status === 'running' ? 'rgba(255,152,0,0.5)' : mission.status === 'failed' ? 'rgba(244,67,54,0.5)' : 'rgba(76,175,80,0.3)'}`,
+                      flexShrink: 0,
+                    }} />
+                    <span style={{
+                      fontSize: 12,
+                      fontFamily: 'var(--hatch-font-body)',
+                      flex: 1,
+                      color: 'var(--hatch-text-primary)',
                     }}>
-                      {step.step_number}. {step.kind} [{step.status}]
+                      {mission.title}
+                    </span>
+                    <span style={{
+                      fontSize: 10,
+                      fontFamily: 'var(--hatch-font-body)',
+                      color: 'var(--hatch-accent-primary)',
+                    }}>
+                      {mission.created_by}
+                    </span>
+                    {/* Progress bar */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{
+                        width: 40,
+                        height: 4,
+                        backgroundColor: 'var(--hatch-bg-deep)',
+                        borderRadius: 2,
+                        overflow: 'hidden',
+                      }}>
+                        <div style={{
+                          width: `${progress}%`,
+                          height: '100%',
+                          backgroundColor: statusColor(mission.status),
+                          borderRadius: 2,
+                          transition: 'width 300ms ease',
+                        }} />
+                      </div>
+                      <span style={{
+                        fontSize: 10,
+                        fontFamily: 'var(--hatch-font-body)',
+                        color: 'var(--hatch-text-muted)',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {mission.completed_steps}/{mission.total_steps}
+                      </span>
                     </div>
-                  ))}
+                  </div>
+
+                  {expanded.has(mission.id) && mission.steps && (
+                    <div className="stagger-mount" style={{ padding: '0 14px 12px 34px' }}>
+                      {mission.steps.map((step) => (
+                        <div key={step.id} style={{
+                          fontSize: 11,
+                          fontFamily: 'var(--hatch-font-body)',
+                          padding: '4px 0',
+                          color: step.status === 'succeeded' ? 'var(--hatch-success)'
+                            : step.status === 'failed' ? 'var(--hatch-danger)'
+                              : step.status === 'running' ? 'var(--hatch-warning)' : 'var(--hatch-text-muted)',
+                        }}>
+                          {step.step_number}. {step.kind} [{step.status}]
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

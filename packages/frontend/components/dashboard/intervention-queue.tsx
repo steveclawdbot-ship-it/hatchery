@@ -31,27 +31,15 @@ export default function InterventionQueue() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [assigneeById, setAssigneeById] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    void loadInterventions();
-  }, []);
+  useEffect(() => { void loadInterventions(); }, []);
 
   async function loadInterventions() {
     setLoading(true);
     try {
       const res = await fetch('/api/interventions');
       const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(
-          payload?.error && typeof payload.error === 'string'
-            ? payload.error
-            : 'Failed to load interventions',
-        );
-      }
-
-      const rows = Array.isArray(payload?.interventions)
-        ? payload.interventions
-        : [];
-      setInterventions(rows as Intervention[]);
+      if (!res.ok) throw new Error(payload?.error ?? 'Failed to load interventions');
+      setInterventions(Array.isArray(payload?.interventions) ? payload.interventions as Intervention[] : []);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load interventions');
@@ -60,31 +48,17 @@ export default function InterventionQueue() {
     }
   }
 
-  async function runAction(
-    id: string,
-    action: InterventionAction,
-    extra: { assignee?: string; note?: string } = {},
-  ) {
+  async function runAction(id: string, action: InterventionAction, extra: { assignee?: string; note?: string } = {}) {
     setBusyId(id);
     setError('');
     try {
       const res = await fetch(`/api/interventions/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          ...extra,
-        }),
+        body: JSON.stringify({ action, ...extra }),
       });
       const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(
-          payload?.error && typeof payload.error === 'string'
-            ? payload.error
-            : `Failed to ${action} intervention`,
-        );
-      }
-
+      if (!res.ok) throw new Error(payload?.error ?? `Failed to ${action} intervention`);
       const updated = payload?.intervention;
       if (updated && typeof updated === 'object') {
         setInterventions((prev) => prev.map((i) => (i.id === id ? (updated as Intervention) : i)));
@@ -99,24 +73,33 @@ export default function InterventionQueue() {
   }
 
   return (
-    <div>
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-      }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>Intervention Queue</h2>
+    <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h2 style={{
+          fontSize: 13,
+          fontFamily: 'var(--hatch-font-display)',
+          color: 'var(--hatch-text-primary)',
+          margin: 0,
+        }}>
+          INTERVENTION QUEUE
+        </h2>
         <button
           onClick={() => void loadInterventions()}
           disabled={loading}
-          style={secondaryButtonStyle}
+          style={btnStyle}
+          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--hatch-glow-primary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
         >
           {loading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
 
-      <div style={{ marginBottom: 10, fontSize: 11, color: '#8a8a9a' }}>
+      <div style={{
+        marginBottom: 12,
+        fontSize: 11,
+        fontFamily: 'var(--hatch-font-body)',
+        color: 'var(--hatch-text-muted)',
+      }}>
         Unresolved runtime blockers requiring operator action.
       </div>
 
@@ -128,165 +111,164 @@ export default function InterventionQueue() {
           borderRadius: 6,
           padding: 10,
           fontSize: 11,
+          fontFamily: 'var(--hatch-font-body)',
           marginBottom: 10,
-        }}
-        >
+        }}>
           {error}
         </div>
       )}
 
-      <div style={{ border: '1px solid #2a2a5a', borderRadius: 6 }}>
+      <div style={{
+        border: '1px solid var(--hatch-border-default)',
+        borderRadius: 8,
+        background: 'var(--hatch-bg-surface)',
+        overflow: 'hidden',
+      }}>
         {interventions.length === 0 ? (
-          <div style={{ padding: 20, textAlign: 'center', color: '#8a8a9a', fontSize: 12 }}>
+          <div style={{
+            padding: 32,
+            textAlign: 'center',
+            fontFamily: 'var(--hatch-font-body)',
+            color: 'var(--hatch-text-muted)',
+            fontSize: 12,
+          }}>
             No unresolved interventions.
           </div>
         ) : (
-          interventions.map((item) => (
-            <div
-              key={item.id}
-              style={{
-                padding: 12,
-                borderBottom: '1px solid #1a1a3a',
+          <div className="stagger-mount">
+            {interventions.map((item) => (
+              <div key={item.id} style={{
+                padding: 14,
+                borderBottom: '1px solid var(--hatch-border-subtle)',
                 display: 'grid',
                 gap: 8,
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span style={severityBadgeStyle(item.severity)}>
-                  {item.severity.toUpperCase()}
-                </span>
-                <span style={statusBadgeStyle(item.status)}>{item.status.toUpperCase()}</span>
-                <span style={{ fontSize: 11, color: '#9aa0ff' }}>{item.reason}</span>
-                <span style={{ fontSize: 11, color: '#6f7398' }}>
-                  {new Date(item.createdAt).toLocaleString()}
-                </span>
-              </div>
+                transition: 'background 150ms ease',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={severityBadge(item.severity)}>{item.severity.toUpperCase()}</span>
+                  <span style={statusBadge(item.status)}>{item.status.toUpperCase()}</span>
+                  <span style={{ fontSize: 11, fontFamily: 'var(--hatch-font-body)', color: 'var(--hatch-text-accent)' }}>
+                    {item.reason}
+                  </span>
+                  <span style={{ fontSize: 10, fontFamily: 'var(--hatch-font-body)', color: 'var(--hatch-text-muted)' }}>
+                    {new Date(item.createdAt).toLocaleString()}
+                  </span>
+                </div>
 
-              <div style={{ fontSize: 13, color: '#e0e0e0' }}>{item.title}</div>
-              {item.description && (
-                <div style={{ fontSize: 12, color: '#b9bdd8' }}>{item.description}</div>
-              )}
+                <div style={{
+                  fontSize: 13,
+                  fontFamily: 'var(--hatch-font-body)',
+                  color: 'var(--hatch-text-primary)',
+                }}>
+                  {item.title}
+                </div>
+                {item.description && (
+                  <div style={{
+                    fontSize: 12,
+                    fontFamily: 'var(--hatch-font-body)',
+                    color: 'var(--hatch-text-secondary)',
+                    lineHeight: 1.5,
+                  }}>
+                    {item.description}
+                  </div>
+                )}
 
-              <div style={{ fontSize: 11, color: '#8a8a9a', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                <span>ID: {item.id}</span>
-                <span>Run: {item.actionRunId ?? 'n/a'}</span>
-                <span>Step: {item.stepId ?? 'n/a'}</span>
-                <span>Mission: {item.missionId ?? 'n/a'}</span>
-                <span>Assigned: {item.assignedTo ?? 'unassigned'}</span>
-              </div>
+                <div style={{
+                  fontSize: 10,
+                  fontFamily: 'var(--hatch-font-body)',
+                  color: 'var(--hatch-text-muted)',
+                  display: 'flex',
+                  gap: 12,
+                  flexWrap: 'wrap',
+                }}>
+                  <span>Run: {item.actionRunId ?? 'n/a'}</span>
+                  <span>Step: {item.stepId ?? 'n/a'}</span>
+                  <span>Mission: {item.missionId ?? 'n/a'}</span>
+                  <span>Assigned: {item.assignedTo ?? 'unassigned'}</span>
+                </div>
 
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <button
-                  onClick={() => void runAction(item.id, 'acknowledge')}
-                  disabled={busyId === item.id || item.status !== 'open'}
-                  style={actionButtonStyle}
-                >
-                  Acknowledge
-                </button>
-                <button
-                  onClick={() => void runAction(item.id, 'retry')}
-                  disabled={busyId === item.id || !item.stepId}
-                  style={actionButtonStyle}
-                >
-                  Retry Step
-                </button>
-                <button
-                  onClick={() => void runAction(item.id, 'resolve')}
-                  disabled={busyId === item.id}
-                  style={resolveButtonStyle}
-                >
-                  Resolve
-                </button>
-                <input
-                  value={assigneeById[item.id] ?? ''}
-                  onChange={(event) => setAssigneeById((prev) => ({
-                    ...prev,
-                    [item.id]: event.target.value,
-                  }))}
-                  placeholder="assignee"
-                  style={assigneeInputStyle}
-                />
-                <button
-                  onClick={() => void runAction(item.id, 'reassign', { assignee: assigneeById[item.id] ?? '' })}
-                  disabled={busyId === item.id || !(assigneeById[item.id] ?? '').trim()}
-                  style={secondaryButtonStyle}
-                >
-                  Reassign
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <ActionBtn label="Acknowledge" disabled={busyId === item.id || item.status !== 'open'} onClick={() => void runAction(item.id, 'acknowledge')} />
+                  <ActionBtn label="Retry Step" disabled={busyId === item.id || !item.stepId} onClick={() => void runAction(item.id, 'retry')} />
+                  <ActionBtn label="Resolve" variant="success" disabled={busyId === item.id} onClick={() => void runAction(item.id, 'resolve')} />
+                  <input
+                    value={assigneeById[item.id] ?? ''}
+                    onChange={(e) => setAssigneeById((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                    placeholder="assignee"
+                    style={inputStyle}
+                  />
+                  <ActionBtn
+                    label="Reassign"
+                    disabled={busyId === item.id || !(assigneeById[item.id] ?? '').trim()}
+                    onClick={() => void runAction(item.id, 'reassign', { assignee: assigneeById[item.id] ?? '' })}
+                  />
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-function severityBadgeStyle(severity: InterventionSeverity): CSSProperties {
-  const color = severity === 'critical'
-    ? '#ff6b6b'
-    : severity === 'high'
-      ? '#ff9f43'
-      : severity === 'medium'
-        ? '#ffd166'
-        : '#8ecae6';
+function ActionBtn({ label, disabled, onClick, variant }: {
+  label: string; disabled: boolean; onClick: () => void; variant?: 'success';
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        ...btnStyle,
+        ...(variant === 'success' ? { background: '#1d3b2a', border: '1px solid #2b5f44', color: '#7fe0a8' } : {}),
+      }}
+      onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.boxShadow = 'var(--hatch-glow-primary)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+    >
+      {label}
+    </button>
+  );
+}
 
+function severityBadge(severity: InterventionSeverity): CSSProperties {
+  const color = severity === 'critical' ? '#ff6b6b' : severity === 'high' ? '#ff9f43' : severity === 'medium' ? '#ffd166' : '#8ecae6';
   return {
-    fontSize: 10,
-    color,
-    border: `1px solid ${color}55`,
-    background: `${color}1a`,
-    borderRadius: 4,
-    padding: '2px 6px',
+    fontSize: 9, fontFamily: 'var(--hatch-font-display)', color,
+    border: `1px solid ${color}55`, background: `${color}1a`, borderRadius: 4, padding: '2px 6px',
+    animation: (severity === 'critical' || severity === 'high') ? 'pulseGlow 1.5s ease-in-out infinite' : undefined,
+    textShadow: (severity === 'critical') ? `0 0 6px ${color}` : undefined,
   };
 }
 
-function statusBadgeStyle(status: InterventionStatus): CSSProperties {
-  const color = status === 'open'
-    ? '#ff8f8f'
-    : status === 'acknowledged'
-      ? '#ffd166'
-      : '#7fe0a8';
-
+function statusBadge(status: InterventionStatus): CSSProperties {
+  const color = status === 'open' ? '#ff8f8f' : status === 'acknowledged' ? '#ffd166' : '#7fe0a8';
   return {
-    fontSize: 10,
-    color,
-    border: `1px solid ${color}55`,
-    background: `${color}1a`,
-    borderRadius: 4,
-    padding: '2px 6px',
+    fontSize: 9, fontFamily: 'var(--hatch-font-display)', color,
+    border: `1px solid ${color}55`, background: `${color}1a`, borderRadius: 4, padding: '2px 6px',
   };
 }
 
-const actionButtonStyle: CSSProperties = {
+const btnStyle: CSSProperties = {
   fontSize: 11,
-  padding: '6px 10px',
-  background: '#1a1a3a',
-  border: '1px solid #2a2a5a',
-  borderRadius: 4,
-  color: '#9aa0ff',
+  fontFamily: 'var(--hatch-font-body)',
+  padding: '6px 12px',
+  background: 'var(--hatch-bg-elevated)',
+  border: '1px solid var(--hatch-border-default)',
+  borderRadius: 6,
+  color: 'var(--hatch-text-accent)',
   cursor: 'pointer',
+  transition: 'all 150ms ease',
 };
 
-const resolveButtonStyle: CSSProperties = {
-  ...actionButtonStyle,
-  background: '#1d3b2a',
-  border: '1px solid #2b5f44',
-  color: '#7fe0a8',
-};
-
-const secondaryButtonStyle: CSSProperties = {
-  ...actionButtonStyle,
-  color: '#c3c8f0',
-};
-
-const assigneeInputStyle: CSSProperties = {
+const inputStyle: CSSProperties = {
   fontSize: 11,
+  fontFamily: 'var(--hatch-font-body)',
   padding: '6px 8px',
   width: 110,
-  background: '#0f0f25',
-  border: '1px solid #2a2a5a',
-  borderRadius: 4,
-  color: '#e0e0e0',
-  fontFamily: 'inherit',
+  background: 'var(--hatch-bg-surface)',
+  border: '1px solid var(--hatch-border-default)',
+  borderRadius: 6,
+  color: 'var(--hatch-text-primary)',
+  outline: 'none',
 };

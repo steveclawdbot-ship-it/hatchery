@@ -47,6 +47,7 @@ export default function ControlPanel() {
   const [actionBusy, setActionBusy] = useState<ControlAction | null>(null);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
 
   useEffect(() => {
     void loadConfig();
@@ -120,29 +121,38 @@ export default function ControlPanel() {
   }
 
   const modeColor = control.mode === 'running'
-    ? '#4CAF50'
+    ? 'var(--hatch-success)'
     : control.mode === 'paused'
-      ? '#FF9800'
-      : '#F44336';
+      ? 'var(--hatch-warning)'
+      : 'var(--hatch-danger)';
 
   return (
-    <div style={{ display: 'grid', gap: 20, maxWidth: 960 }}>
-      <section style={{ border: '1px solid #2a2a5a', borderRadius: 6, padding: 16 }}>
+    <div style={{ display: 'grid', gap: 20, maxWidth: 960, animation: 'slideUp 0.4s ease-out' }}>
+      <section className="glass-card" style={{ padding: 16 }}>
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginBottom: 12,
+          marginBottom: 14,
         }}>
-          <h2 style={{ fontSize: 18, margin: 0 }}>Control Panel</h2>
+          <h2 style={{
+            fontSize: 13,
+            fontFamily: 'var(--hatch-font-display)',
+            color: 'var(--hatch-text-primary)',
+            margin: 0,
+          }}>
+            CONTROL PANEL
+          </h2>
           <span style={{
-            fontSize: 11,
+            fontSize: 10,
+            fontFamily: 'var(--hatch-font-display)',
             color: modeColor,
-            background: `${modeColor}22`,
-            padding: '4px 8px',
+            background: `color-mix(in srgb, ${modeColor} 15%, transparent)`,
+            padding: '4px 10px',
             borderRadius: 4,
-          }}
-          >
+            animation: control.mode === 'running' ? 'liveIndicator 2s ease-in-out infinite' : undefined,
+            textShadow: `0 0 8px ${modeColor}`,
+          }}>
             {control.mode.toUpperCase()}
           </span>
         </div>
@@ -174,6 +184,14 @@ export default function ControlPanel() {
               style={inputStyle}
               disabled={loading || saving}
               placeholder="Example: Weekly qualified leads"
+              onFocus={(e) => {
+                e.currentTarget.style.borderColor = 'var(--hatch-accent-primary)';
+                e.currentTarget.style.boxShadow = '0 0 8px rgba(124, 92, 255, 0.3)';
+              }}
+              onBlur={(e) => {
+                e.currentTarget.style.borderColor = 'var(--hatch-border-default)';
+                e.currentTarget.style.boxShadow = 'none';
+              }}
             />
           </label>
 
@@ -187,6 +205,14 @@ export default function ControlPanel() {
                 onChange={(event) => setConfig((prev) => ({ ...prev, targetValue: Number(event.target.value) }))}
                 style={inputStyle}
                 disabled={loading || saving}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-accent-primary)';
+                  e.currentTarget.style.boxShadow = '0 0 8px rgba(124, 92, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-border-default)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               />
             </label>
 
@@ -199,6 +225,14 @@ export default function ControlPanel() {
                 onChange={(event) => setConfig((prev) => ({ ...prev, deadlineDays: Number(event.target.value) }))}
                 style={inputStyle}
                 disabled={loading || saving}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-accent-primary)';
+                  e.currentTarget.style.boxShadow = '0 0 8px rgba(124, 92, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-border-default)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               />
             </label>
 
@@ -211,6 +245,14 @@ export default function ControlPanel() {
                 onChange={(event) => setConfig((prev) => ({ ...prev, budgetLimit: Number(event.target.value) }))}
                 style={inputStyle}
                 disabled={loading || saving}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-accent-primary)';
+                  e.currentTarget.style.boxShadow = '0 0 8px rgba(124, 92, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-border-default)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               />
             </label>
           </div>
@@ -225,6 +267,14 @@ export default function ControlPanel() {
                 onChange={(event) => setConfig((prev) => ({ ...prev, loopCapPerDay: Number(event.target.value) }))}
                 style={inputStyle}
                 disabled={loading || saving}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-accent-primary)';
+                  e.currentTarget.style.boxShadow = '0 0 8px rgba(124, 92, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-border-default)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               />
             </label>
 
@@ -237,6 +287,14 @@ export default function ControlPanel() {
                 onChange={(event) => setConfig((prev) => ({ ...prev, postLimitPerDay: Number(event.target.value) }))}
                 style={inputStyle}
                 disabled={loading || saving}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-accent-primary)';
+                  e.currentTarget.style.boxShadow = '0 0 8px rgba(124, 92, 255, 0.3)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--hatch-border-default)';
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
               />
             </label>
           </div>
@@ -244,45 +302,71 @@ export default function ControlPanel() {
           <button
             onClick={saveConfig}
             disabled={loading || saving}
+            onMouseEnter={() => setHoveredBtn('save')}
+            onMouseLeave={() => setHoveredBtn(null)}
             style={{
               ...buttonStyle,
-              background: '#2a2a5a',
-              color: '#7c5cff',
-              width: 180,
+              background: hoveredBtn === 'save' ? 'var(--hatch-bg-elevated)' : 'var(--hatch-bg-surface)',
+              color: 'var(--hatch-accent-primary)',
+              width: 200,
+              fontFamily: 'var(--hatch-font-display)',
+              fontSize: 10,
+              boxShadow: hoveredBtn === 'save' ? 'var(--hatch-glow-primary)' : 'none',
+              transition: 'all 150ms ease',
             }}
           >
-            {saving ? 'Saving...' : 'Save Company Config'}
+            {saving ? 'SAVING...' : 'SAVE CONFIG'}
           </button>
         </div>
       </section>
 
-      <section style={{ border: '1px solid #2a2a5a', borderRadius: 6, padding: 16 }}>
-        <h3 style={{ fontSize: 16, margin: '0 0 12px 0' }}>Execution Controls</h3>
+      <section className="glass-card" style={{ padding: 16 }}>
+        <h3 style={{
+          fontSize: 11,
+          fontFamily: 'var(--hatch-font-display)',
+          color: 'var(--hatch-text-primary)',
+          margin: '0 0 14px 0',
+        }}>
+          EXECUTION CONTROLS
+        </h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <ControlButton
             label="Run Now"
             busy={actionBusy === 'run_now'}
             onClick={() => triggerAction('run_now')}
+            hovered={hoveredBtn === 'run_now'}
+            onHover={(h) => setHoveredBtn(h ? 'run_now' : null)}
           />
           <ControlButton
             label="Pause"
             busy={actionBusy === 'pause'}
             onClick={() => triggerAction('pause')}
+            hovered={hoveredBtn === 'pause'}
+            onHover={(h) => setHoveredBtn(h ? 'pause' : null)}
           />
           <ControlButton
             label="Resume"
             busy={actionBusy === 'resume'}
             onClick={() => triggerAction('resume')}
+            hovered={hoveredBtn === 'resume'}
+            onHover={(h) => setHoveredBtn(h ? 'resume' : null)}
           />
           <ControlButton
             label="Stop All"
             busy={actionBusy === 'stop_all'}
             danger
             onClick={() => triggerAction('stop_all')}
+            hovered={hoveredBtn === 'stop_all'}
+            onHover={(h) => setHoveredBtn(h ? 'stop_all' : null)}
           />
         </div>
 
-        <div style={{ marginTop: 12, fontSize: 11, color: '#8a8a9a' }}>
+        <div style={{
+          marginTop: 12,
+          fontSize: 11,
+          fontFamily: 'var(--hatch-font-body)',
+          color: 'var(--hatch-text-muted)',
+        }}>
           Polling cadence: every {control.pollingMinutes} minutes.
           {' '}
           {control.updatedAt ? `Last mode update: ${new Date(control.updatedAt).toLocaleString()}.` : ''}
@@ -292,12 +376,30 @@ export default function ControlPanel() {
       <OperationsSummary />
 
       {message && (
-        <div style={{ border: '1px solid #2b5f44', background: '#103020', padding: 10, fontSize: 11, color: '#7fe0a8', borderRadius: 6 }}>
+        <div style={{
+          border: '1px solid #2b5f44',
+          background: '#103020',
+          padding: '10px 14px',
+          fontSize: 11,
+          fontFamily: 'var(--hatch-font-body)',
+          color: 'var(--hatch-success)',
+          borderRadius: 6,
+          animation: 'fadeIn 0.3s ease-out',
+        }}>
           {message}
         </div>
       )}
       {error && (
-        <div style={{ border: '1px solid #5f2b2b', background: '#301010', padding: 10, fontSize: 11, color: '#ff8f8f', borderRadius: 6 }}>
+        <div style={{
+          border: '1px solid #5f2b2b',
+          background: '#301010',
+          padding: '10px 14px',
+          fontSize: 11,
+          fontFamily: 'var(--hatch-font-body)',
+          color: '#ff8f8f',
+          borderRadius: 6,
+          animation: 'fadeIn 0.3s ease-out',
+        }}>
           {error}
         </div>
       )}
@@ -311,21 +413,38 @@ function ControlButton(
     busy,
     danger = false,
     onClick,
+    hovered,
+    onHover,
   }: {
     label: string;
     busy: boolean;
     danger?: boolean;
     onClick: () => void;
+    hovered: boolean;
+    onHover: (h: boolean) => void;
   },
 ) {
   return (
     <button
       onClick={onClick}
       disabled={busy}
+      onMouseEnter={() => onHover(true)}
+      onMouseLeave={() => onHover(false)}
       style={{
         ...buttonStyle,
-        background: danger ? '#4a1f1f' : '#1a1a3a',
-        color: danger ? '#ff8f8f' : '#9aa0ff',
+        fontFamily: 'var(--hatch-font-body)',
+        background: danger
+          ? (hovered ? '#5a2020' : '#3a1515')
+          : (hovered ? 'var(--hatch-bg-elevated)' : 'var(--hatch-bg-surface)'),
+        color: danger ? '#ff8f8f' : 'var(--hatch-accent-secondary)',
+        boxShadow: hovered
+          ? danger
+            ? '0 0 12px rgba(244, 67, 54, 0.2)'
+            : 'var(--hatch-glow-primary)'
+          : 'none',
+        transition: 'all 150ms ease',
+        transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
+        animation: danger && hovered ? 'dangerPulse 2s ease-in-out infinite' : undefined,
       }}
     >
       {busy ? 'Working...' : label}
@@ -337,24 +456,26 @@ const labelStyle: CSSProperties = {
   display: 'grid',
   gap: 4,
   fontSize: 11,
-  color: '#a0a0b5',
+  fontFamily: 'var(--hatch-font-body)',
+  color: 'var(--hatch-text-muted)',
 };
 
 const inputStyle: CSSProperties = {
-  fontSize: 14,
+  fontSize: 13,
+  fontFamily: 'var(--hatch-font-body)',
   padding: '8px 10px',
-  background: '#111129',
-  border: '1px solid #2a2a5a',
-  borderRadius: 4,
-  color: '#f0f0f5',
-  fontFamily: 'inherit',
+  background: 'var(--hatch-bg-deep)',
+  border: '1px solid var(--hatch-border-default)',
+  borderRadius: 6,
+  color: 'var(--hatch-text-primary)',
+  outline: 'none',
+  transition: 'border-color 150ms ease, box-shadow 150ms ease',
 };
 
 const buttonStyle: CSSProperties = {
-  border: '1px solid #2a2a5a',
-  borderRadius: 4,
+  border: '1px solid var(--hatch-border-default)',
+  borderRadius: 6,
   fontSize: 12,
   padding: '10px 16px',
   cursor: 'pointer',
-  fontFamily: 'inherit',
 };

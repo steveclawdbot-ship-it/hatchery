@@ -8,8 +8,10 @@ import {
 import {
   generatePitchText,
   getMissingProviderKeyError,
+  getPitchProviderApiKeyEnvVar,
   getPitchProviderOrDefault,
   getProviderContext,
+  normalizePitchModel,
   type PitchProvider,
 } from '@/lib/pitch/llm';
 import type { Round, AgentConfig, WorkerConfig, GeneratedConfigs } from '@/lib/pitch/types';
@@ -54,6 +56,7 @@ export async function POST(
     if (!providerContext) {
       return Response.json({ error: getMissingProviderKeyError(provider) }, { status: 500 });
     }
+    const model = normalizePitchModel(session.model);
 
     const rounds: Round[] = session.rounds || [];
     const revisedPitch = session.revised_pitch;
@@ -86,6 +89,7 @@ export async function POST(
 
             const agentText = await generatePitchText(providerContext, {
               mode: 'generation',
+              model: model ?? undefined,
               maxTokens: 4000,
               temperature: 0.7,
               prompt: `${AGENT_GENERATION_PROMPT}\n\n--- REVISED PITCH ---\n${revisedPitch}\n\nRespond ONLY with valid JSON, no other text.`,
@@ -119,6 +123,7 @@ export async function POST(
 
             const workerText = await generatePitchText(providerContext, {
               mode: 'generation',
+              model: model ?? undefined,
               maxTokens: 4000,
               temperature: 0.6,
               prompt: `${WORKER_GENERATION_PROMPT}\n\n--- REVISED PITCH ---\n${revisedPitch}\n\n--- AGENT TEAM ---\n${agentSummary}\n\nRespond ONLY with valid JSON, no other text.`,
@@ -149,6 +154,7 @@ export async function POST(
             const transcriptText = formatTranscript(rounds);
             strategy = await generatePitchText(providerContext, {
               mode: 'generation',
+              model: model ?? undefined,
               system: STRATEGY_SYSTEM_PROMPT,
               maxTokens: 4000,
               temperature: 0.6,
@@ -175,6 +181,7 @@ export async function POST(
             buildGeneratedConfigs({
               startupName,
               provider,
+              model,
               agentConfig,
               workerConfig,
               strategy,
@@ -221,11 +228,12 @@ export async function POST(
 function buildGeneratedConfigs(params: {
   startupName: string;
   provider: PitchProvider;
+  model: string | null;
   agentConfig: AgentConfig;
   workerConfig: WorkerConfig;
   strategy: string;
 }): GeneratedConfigs {
-  const { startupName, provider, agentConfig, workerConfig, strategy } = params;
+  const { startupName, provider, model, agentConfig, workerConfig, strategy } = params;
 
   return {
     'agents.json': buildAgentsJson(startupName, agentConfig),
@@ -234,7 +242,7 @@ function buildGeneratedConfigs(params: {
     'conversations.json': buildConversationsJson(agentConfig),
     'step-registry.json': buildStepRegistryJson(workerConfig),
     'seed.sql': generateSeedSql(startupName, agentConfig, workerConfig),
-    '.env.example': generateEnvExample(workerConfig, provider),
+    '.env.example': generateEnvExample(workerConfig, provider, model),
     'STRATEGY.md': strategy,
   };
 }
@@ -320,12 +328,17 @@ function buildStepRegistryJson(workerConfig: WorkerConfig): string {
   );
 }
 
-function generateEnvExample(workerConfig: WorkerConfig, provider: PitchProvider): string {
+function generateEnvExample(
+  workerConfig: WorkerConfig,
+  provider: PitchProvider,
+  model: string | null
+): string {
   const requiredVars = new Set<string>();
   requiredVars.add('SUPABASE_URL');
   requiredVars.add('SUPABASE_SERVICE_KEY');
   requiredVars.add('LLM_PROVIDER');
-  requiredVars.add(provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY');
+  requiredVars.add('LLM_MODEL');
+  requiredVars.add(getPitchProviderApiKeyEnvVar(provider));
 
   for (const sk of workerConfig.stepKinds) {
     for (const v of sk.requiredConfig) {
@@ -337,6 +350,10 @@ function generateEnvExample(workerConfig: WorkerConfig, provider: PitchProvider)
   for (const variableName of requiredVars) {
     if (variableName === 'LLM_PROVIDER') {
       lines.push(`LLM_PROVIDER=${provider}`);
+      continue;
+    }
+    if (variableName === 'LLM_MODEL') {
+      lines.push(`LLM_MODEL=${model ?? ''}`);
       continue;
     }
     lines.push(`${variableName}=`);

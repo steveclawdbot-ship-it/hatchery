@@ -4,6 +4,7 @@ import {
   getMissingProviderKeyError,
   getPitchProviderOrDefault,
   getProviderContext,
+  normalizePitchModel,
   streamPitchText,
 } from '@/lib/pitch/llm';
 import type { Round } from '@/lib/pitch/types';
@@ -48,6 +49,7 @@ export async function POST(
     if (!providerContext) {
       return Response.json({ error: getMissingProviderKeyError(provider) }, { status: 500 });
     }
+    const model = normalizePitchModel(session.model) ?? undefined;
 
     const currentRound = session.current_round;
     const rounds: Round[] = session.rounds || [];
@@ -70,6 +72,7 @@ export async function POST(
 
           for await (const text of streamPitchText(providerContext, {
             mode: 'chat',
+            model,
             system: systemPrompt,
             prompt: history,
             maxTokens: 1024,

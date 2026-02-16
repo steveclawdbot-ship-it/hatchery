@@ -13,30 +13,38 @@ export default function PitchLayout({ children }: { children: React.ReactNode })
       <header
         style={{
           padding: '20px 32px',
-          borderBottom: '2px solid #1a1a3a',
+          borderBottom: '2px solid var(--hatch-border-default)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: '#0a0a1a',
+          background: 'var(--hatch-bg-deep)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
           <Link
             href="/pitch"
             style={{
-              fontSize: 20,
+              fontSize: 16,
+              fontFamily: 'var(--hatch-font-display)',
               margin: 0,
-              color: '#7c5cff',
+              color: 'var(--hatch-accent-primary)',
               textDecoration: 'none',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
+              textShadow: '0 0 12px rgba(124, 92, 255, 0.4)',
             }}
           >
             <span style={{ fontSize: 24 }}>🐣</span>
             HATCHERY
           </Link>
-          <span style={{ fontSize: 13, color: '#666' }}>The Pitch Meeting</span>
+          <span style={{
+            fontSize: 12,
+            fontFamily: 'var(--hatch-font-body)',
+            color: 'var(--hatch-text-muted)',
+          }}>
+            The Pitch Meeting
+          </span>
         </div>
 
         {sessionId && (
@@ -50,11 +58,12 @@ export default function PitchLayout({ children }: { children: React.ReactNode })
             <span
               style={{
                 fontSize: 11,
-                color: '#7a7a92',
+                fontFamily: 'var(--hatch-font-body)',
+                color: 'var(--hatch-text-muted)',
                 padding: '6px 12px',
-                background: '#1a1a3a',
+                background: 'var(--hatch-bg-surface)',
+                border: '1px solid var(--hatch-border-default)',
                 borderRadius: 4,
-                fontFamily: 'monospace',
               }}
             >
               Session: {sessionId.slice(0, 8)}...

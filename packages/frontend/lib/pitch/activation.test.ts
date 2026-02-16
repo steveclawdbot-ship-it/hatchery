@@ -7,6 +7,7 @@ function buildSession(overrides: Partial<PitchSession> = {}): PitchSession {
     id: 'session-1',
     startup_name: 'Acme AI',
     provider: 'anthropic',
+    model: 'claude-sonnet-4-20250514',
     status: 'completed',
     current_round: 4,
     rounds: [],

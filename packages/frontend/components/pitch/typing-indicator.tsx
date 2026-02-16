@@ -8,6 +8,7 @@ export default function TypingIndicator() {
         alignItems: 'center',
         gap: 8,
         padding: '12px 16px',
+        animation: 'fadeIn 0.3s ease-out',
       }}
     >
       <div style={{ display: 'flex', gap: 5 }}>
@@ -18,29 +19,22 @@ export default function TypingIndicator() {
               width: 10,
               height: 10,
               borderRadius: '50%',
-              background: '#7c5cff',
+              background: 'var(--hatch-accent-primary)',
               animation: `bounce 1.4s infinite ease-in-out both`,
               animationDelay: `${i * 0.16}s`,
+              boxShadow: '0 0 6px rgba(124, 92, 255, 0.4)',
             }}
           />
         ))}
       </div>
-      <span style={{ fontSize: 13, color: '#7a7a92', marginLeft: 10 }}>
+      <span style={{
+        fontSize: 13,
+        fontFamily: 'var(--hatch-font-body)',
+        color: 'var(--hatch-text-muted)',
+        marginLeft: 10,
+      }}>
         VC is thinking...
       </span>
-
-      <style>{`
-        @keyframes bounce {
-          0%, 80%, 100% {
-            transform: scale(0.6);
-            opacity: 0.5;
-          }
-          40% {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }

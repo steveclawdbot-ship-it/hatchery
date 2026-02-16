@@ -11,10 +11,11 @@ interface Event {
   createdAt: string;
 }
 
-export default function SignalFeed() {
+export default function SignalFeed({ compact = false }: { compact?: boolean }) {
   const [events, setEvents] = useState<Event[]>([]);
   const [status, setStatus] = useState<'live' | 'delayed'>('live');
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   useEffect(() => {
     const POLL_MS = 5 * 60 * 1000;
@@ -38,102 +39,135 @@ export default function SignalFeed() {
     };
 
     void poll();
-    const interval = setInterval(() => {
-      void poll();
-    }, POLL_MS);
-
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
+    const interval = setInterval(() => { void poll(); }, POLL_MS);
+    return () => { active = false; clearInterval(interval); };
   }, []);
 
   const getKindColor = (kind: string): string => {
-    if (kind.startsWith('system.')) return '#9E9E9E';
-    if (kind.startsWith('conversation.')) return '#2196F3';
-    if (kind.startsWith('step.succeeded')) return '#4CAF50';
-    if (kind.startsWith('step.failed')) return '#F44336';
-    if (kind.startsWith('mission.')) return '#FF9800';
-    if (kind.includes('alert')) return '#F44336';
-    return '#7c5cff';
+    if (kind.startsWith('system.')) return 'var(--hatch-text-muted)';
+    if (kind.startsWith('conversation.')) return 'var(--hatch-info)';
+    if (kind.startsWith('step.succeeded')) return 'var(--hatch-success)';
+    if (kind.startsWith('step.failed')) return 'var(--hatch-danger)';
+    if (kind.startsWith('mission.')) return 'var(--hatch-warning)';
+    if (kind.includes('alert')) return 'var(--hatch-danger)';
+    return 'var(--hatch-accent-primary)';
   };
 
+  const displayEvents = compact ? events.slice(0, 10) : events;
+
   return (
-    <div>
+    <div style={{ animation: 'slideUp 0.4s ease-out' }}>
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 16,
+        marginBottom: compact ? 10 : 16,
       }}>
-        <h2 style={{ fontSize: 18, margin: 0 }}>Mission Feed</h2>
-        <span style={{
-          fontSize: 11,
-          padding: '4px 8px',
-          backgroundColor: status === 'live' ? '#4CAF5033' : '#F4433633',
-          color: status === 'live' ? '#4CAF50' : '#F44336',
-          borderRadius: 4,
+        <h2 style={{
+          fontSize: compact ? 11 : 13,
+          margin: 0,
+          fontFamily: 'var(--hatch-font-display)',
+          color: 'var(--hatch-text-primary)',
         }}>
-          {status === 'live' ? 'LIVE (POLL)' : 'DELAYED'}
+          {compact ? 'RECENT SIGNALS' : 'SIGNAL FEED'}
+        </h2>
+        <span style={{
+          fontSize: 10,
+          fontFamily: 'var(--hatch-font-display)',
+          padding: '3px 8px',
+          backgroundColor: status === 'live' ? 'rgba(76, 175, 80, 0.15)' : 'rgba(244, 67, 54, 0.15)',
+          color: status === 'live' ? 'var(--hatch-success)' : 'var(--hatch-danger)',
+          borderRadius: 4,
+          animation: status === 'live' ? 'liveIndicator 2s ease-in-out infinite' : undefined,
+        }}>
+          {status === 'live' ? 'LIVE' : 'DELAYED'}
         </span>
       </div>
 
-      <div style={{ fontSize: 11, color: '#7a7a92', marginBottom: 8 }}>
-        Updates every 5 minutes.
-        {' '}
-        {lastUpdated ? `Last sync: ${new Date(lastUpdated).toLocaleTimeString()}` : 'Waiting for first sync...'}
-      </div>
+      {!compact && (
+        <div style={{
+          fontSize: 11,
+          fontFamily: 'var(--hatch-font-body)',
+          color: 'var(--hatch-text-muted)',
+          marginBottom: 10,
+        }}>
+          {lastUpdated
+            ? `Last sync: ${new Date(lastUpdated).toLocaleTimeString()}`
+            : 'Waiting for first sync...'}
+        </div>
+      )}
 
-      <div
-        style={{
-          maxHeight: 600,
-          overflowY: 'auto',
-          border: '1px solid #2a2a5a',
-          borderRadius: 4,
-        }}
-      >
-        {events.length === 0 ? (
-          <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: '#666' }}>
+      <div style={{
+        maxHeight: compact ? 300 : 600,
+        overflowY: 'auto',
+        border: '1px solid var(--hatch-border-default)',
+        borderRadius: 6,
+        background: 'var(--hatch-bg-surface)',
+      }}>
+        {displayEvents.length === 0 ? (
+          <div style={{
+            padding: 32,
+            textAlign: 'center',
+            fontSize: 11,
+            fontFamily: 'var(--hatch-font-body)',
+            color: 'var(--hatch-text-muted)',
+          }}>
             No events yet. Start the heartbeat to see activity.
           </div>
         ) : (
-          events.map((event) => (
+          displayEvents.map((event) => (
             <div
               key={event.id}
+              onMouseEnter={() => setHoveredId(event.id)}
+              onMouseLeave={() => setHoveredId(null)}
               style={{
                 padding: '8px 12px',
-                borderBottom: '1px solid #1a1a3a',
+                borderBottom: '1px solid var(--hatch-border-subtle)',
                 display: 'flex',
-                gap: 12,
+                gap: 10,
                 alignItems: 'flex-start',
+                background: hoveredId === event.id ? 'var(--hatch-bg-elevated)' : 'transparent',
+                transition: 'background 150ms ease',
               }}
             >
               <span style={{
                 fontSize: 10,
-                color: '#666',
+                fontFamily: 'var(--hatch-font-body)',
+                color: 'var(--hatch-text-muted)',
                 whiteSpace: 'nowrap',
                 marginTop: 2,
               }}>
                 {new Date(event.createdAt).toLocaleTimeString()}
               </span>
               <span style={{
-                fontSize: 10,
+                fontSize: 9,
+                fontFamily: 'var(--hatch-font-display)',
                 padding: '2px 6px',
-                backgroundColor: getKindColor(event.kind) + '22',
+                backgroundColor: 'rgba(124, 92, 255, 0.1)',
                 color: getKindColor(event.kind),
-                borderRadius: 2,
+                borderRadius: 3,
                 whiteSpace: 'nowrap',
+                textShadow: `0 0 6px currentColor`,
               }}>
                 {event.kind}
               </span>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, marginBottom: 2 }}>
-                  <span style={{ color: '#7c5cff' }}>{event.agentId}</span>
+                <div style={{
+                  fontSize: 12,
+                  fontFamily: 'var(--hatch-font-body)',
+                  marginBottom: 2,
+                  color: 'var(--hatch-text-primary)',
+                }}>
+                  <span style={{ color: 'var(--hatch-accent-primary)' }}>{event.agentId}</span>
                   {' '}
                   {event.title}
                 </div>
-                {event.summary && (
-                  <div style={{ fontSize: 11, color: '#888' }}>
+                {event.summary && !compact && (
+                  <div style={{
+                    fontSize: 11,
+                    fontFamily: 'var(--hatch-font-body)',
+                    color: 'var(--hatch-text-secondary)',
+                  }}>
                     {event.summary.slice(0, 200)}
                   </div>
                 )}

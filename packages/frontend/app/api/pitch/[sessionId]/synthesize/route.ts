@@ -4,6 +4,7 @@ import {
   getMissingProviderKeyError,
   getPitchProviderOrDefault,
   getProviderContext,
+  normalizePitchModel,
   streamPitchText,
 } from '@/lib/pitch/llm';
 import type { Round } from '@/lib/pitch/types';
@@ -45,6 +46,7 @@ export async function POST(
     if (!providerContext) {
       return Response.json({ error: getMissingProviderKeyError(provider) }, { status: 500 });
     }
+    const model = normalizePitchModel(session.model) ?? undefined;
 
     // Format transcript for synthesis
     const transcriptText = formatTranscript(rounds);
@@ -59,6 +61,7 @@ export async function POST(
 
           for await (const text of streamPitchText(providerContext, {
             mode: 'synthesis',
+            model,
             system: VC_REVISION_PROMPT,
             prompt,
             maxTokens: 3000,

@@ -1,5 +1,9 @@
 import { createSupabaseAdminClient } from '@/lib/supabase-admin';
-import { getPitchProviderOrDefault, normalizePitchProvider } from '@/lib/pitch/llm';
+import {
+  getPitchProviderOrDefault,
+  normalizePitchModel,
+  normalizePitchProvider,
+} from '@/lib/pitch/llm';
 
 // POST: Create new pitch session
 export async function POST(req: Request) {
@@ -12,10 +16,12 @@ export async function POST(req: Request) {
     const body = await req.json();
     const startup_name = typeof body?.startup_name === 'string' ? body.startup_name : null;
     const requestedProvider = body?.provider;
+    const requestedModel = body?.model;
     const provider =
       requestedProvider === undefined
         ? getPitchProviderOrDefault(undefined)
         : normalizePitchProvider(requestedProvider);
+    const model = normalizePitchModel(requestedModel);
 
     if (!provider) {
       return Response.json(
@@ -24,11 +30,16 @@ export async function POST(req: Request) {
       );
     }
 
+    if (requestedModel !== undefined && !model) {
+      return Response.json({ error: 'Invalid model value' }, { status: 400 });
+    }
+
     const { data, error } = await db
       .from('pitch_sessions')
       .insert({
         startup_name,
         provider,
+        model,
         status: 'in_progress',
         current_round: 1,
         rounds: [],
@@ -37,6 +48,16 @@ export async function POST(req: Request) {
       .single();
 
     if (error) {
+      const errorMessage = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+      if (
+        errorMessage.includes('model')
+        && (errorMessage.includes('column') || errorMessage.includes('schema cache'))
+      ) {
+        return Response.json(
+          { error: 'Database schema is outdated: missing pitch_sessions.model column' },
+          { status: 500 }
+        );
+      }
       console.error('Failed to create session:', error);
       return Response.json({ error: 'Failed to create session' }, { status: 500 });
     }
