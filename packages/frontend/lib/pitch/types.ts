@@ -20,6 +20,8 @@ export interface PitchSession {
   worker_config: WorkerConfig | null;
   strategy: string | null;
   configs: GeneratedConfigs | null;
+  activated_at?: string | null;
+  activation_mission_id?: string | null;
   created_at: string;
   updated_at: string;
 }
