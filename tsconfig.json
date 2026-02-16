@@ -4,8 +4,6 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,5 +12,11 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true
-  }
+  },
+  "files": [],
+  "references": [
+    { "path": "packages/cli" },
+    { "path": "packages/engine" },
+    { "path": "packages/frontend" }
+  ]
 }

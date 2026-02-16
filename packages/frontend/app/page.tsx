@@ -1,102 +1,54 @@
-'use client';
+import { redirect } from 'next/navigation';
+import DashboardHome from '@/components/dashboard/dashboard-home';
+import { createSupabaseAdminClient } from '@/lib/supabase-admin';
 
-import { useState } from 'react';
-import Link from 'next/link';
-import SignalFeed from '@/components/dashboard/signal-feed';
-import ControlPanel from '@/components/dashboard/control-panel';
-import PixelOffice from '@/components/office/pixel-office';
-import RelationshipGraph from '@/components/dashboard/relationship-graph';
-import MemoryBrowser from '@/components/dashboard/memory-browser';
-import InterventionQueue from '@/components/dashboard/intervention-queue';
+interface SessionActivationRow {
+  id: string;
+}
 
-type Tab = 'control' | 'feed' | 'interventions' | 'office' | 'graph' | 'memory';
+interface AgentPolicyRow {
+  value: unknown;
+}
 
-export default function Dashboard() {
-  const [activeTab, setActiveTab] = useState<Tab>('control');
+function hasConfiguredAgents(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
 
-  const tabs: Array<{ id: Tab; label: string; enabled: boolean }> = [
-    { id: 'control', label: 'Control Panel', enabled: true },
-    { id: 'feed', label: 'Mission Feed', enabled: true },
-    { id: 'interventions', label: 'Interventions', enabled: true },
-    { id: 'office', label: 'Pixel Office', enabled: true },
-    { id: 'graph', label: 'Relationship Graph', enabled: true },
-    { id: 'memory', label: 'Memory Browser', enabled: true },
-  ];
+  const agents = (value as Record<string, unknown>).agents;
+  return Array.isArray(agents) && agents.length > 0;
+}
 
-  return (
-    <div style={{ minHeight: '100vh' }}>
-      {/* Header */}
-      <header style={{
-        padding: '16px 24px',
-        borderBottom: '2px solid #1a1a3a',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <h1 style={{ fontSize: 24, margin: 0, color: '#7c5cff' }}>
-            HATCHERY
-          </h1>
-          <span style={{ fontSize: 12, color: '#666' }}>Spawn and run an autonomous startup team</span>
-        </div>
-        <Link
-          href="/pitch"
-          style={{
-            fontSize: 12,
-            color: '#9aa0ff',
-            textDecoration: 'none',
-            border: '1px solid #2a2a5a',
-            borderRadius: 4,
-            padding: '6px 10px',
-            background: '#111129',
-          }}
-        >
-          Open Pitch Meeting
-        </Link>
-      </header>
+async function hasExistingStartup(): Promise<boolean> {
+  const db = createSupabaseAdminClient();
+  if (!db) return false;
 
-      {/* Tab bar */}
-      <nav style={{
-        display: 'flex',
-        gap: 0,
-        borderBottom: '2px solid #1a1a3a',
-      }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => {
-              if (tab.enabled) setActiveTab(tab.id);
-            }}
-            style={{
-              padding: '12px 20px',
-              fontSize: 12,
-              background: activeTab === tab.id ? '#1a1a3a' : 'transparent',
-              color: tab.enabled
-                ? activeTab === tab.id ? '#7c5cff' : '#666'
-                : '#4a4a6a',
-              border: 'none',
-              borderBottom: activeTab === tab.id ? '2px solid #7c5cff' : '2px solid transparent',
-              cursor: tab.enabled ? 'pointer' : 'not-allowed',
-              fontFamily: 'inherit',
-              opacity: tab.enabled ? 1 : 0.65,
-            }}
-            disabled={!tab.enabled}
-          >
-            {tab.label}
-            {!tab.enabled ? ' (soon)' : ''}
-          </button>
-        ))}
-      </nav>
+  const [{ data: activatedSessions, error: activationError }, { data: agentPolicy, error: agentPolicyError }] =
+    await Promise.all([
+      db.from('pitch_sessions').select('id').not('activated_at', 'is', null).limit(1).returns<SessionActivationRow[]>(),
+      db.from('ops_policies').select('value').eq('key', 'agent_configs').maybeSingle().returns<AgentPolicyRow | null>(),
+    ]);
 
-      {/* Content */}
-      <main style={{ padding: 24 }}>
-        {activeTab === 'control' && <ControlPanel />}
-        {activeTab === 'feed' && <SignalFeed />}
-        {activeTab === 'interventions' && <InterventionQueue />}
-        {activeTab === 'office' && <PixelOffice />}
-        {activeTab === 'graph' && <RelationshipGraph />}
-        {activeTab === 'memory' && <MemoryBrowser />}
-      </main>
-    </div>
-  );
+  if (!activationError && (activatedSessions?.length ?? 0) > 0) {
+    return true;
+  }
+
+  if (!agentPolicyError && hasConfiguredAgents(agentPolicy?.value)) {
+    return true;
+  }
+
+  return false;
+}
+
+export default async function HomePage() {
+  const startupExists = await hasExistingStartup();
+
+  if (!startupExists) {
+    redirect('/pitch');
+  }
+
+  return <DashboardHome />;
 }
